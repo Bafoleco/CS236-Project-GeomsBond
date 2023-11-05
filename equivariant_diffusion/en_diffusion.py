@@ -919,6 +919,8 @@ class EnHierarchicalVAE(torch.nn.Module):
         
         error = error_x + error_h_cat + error_h_int
 
+        # TODO: Error on bonds
+
         if self.training:
             denom = (self.n_dims + self.in_node_nf) * xh.shape[1]
             error = error / denom
