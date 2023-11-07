@@ -182,6 +182,8 @@ def process_xyz_gdb9(datafile):
     mol_props = xyz_lines[1].split()
     mol_xyz = xyz_lines[2:num_atoms+2]
     mol_freq = xyz_lines[num_atoms+2]
+    smiles = xyz_lines[num_atoms+3]
+
 
     atom_charges, atom_positions = [], []
     for line in mol_xyz:
@@ -198,5 +200,7 @@ def process_xyz_gdb9(datafile):
     molecule = {'num_atoms': num_atoms, 'charges': atom_charges, 'positions': atom_positions}
     molecule.update(mol_props)
     molecule = {key: torch.tensor(val) for key, val in molecule.items()}
+    molecule['smiles'] = smiles.split()
+    print(molecule)
 
     return molecule

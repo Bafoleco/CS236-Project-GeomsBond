@@ -80,6 +80,8 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
 
     # Basic error checking: Check the training/test/validation splits have the same set of keys.
     keys = [list(data.keys()) for data in datasets.values()]
+    print("gm9 keys: ", keys)
+    print("datadir: ", datadir)
     assert all([key == keys[0] for key in keys]
                ), 'Datasets must have same set of keys!'
 

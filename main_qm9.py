@@ -184,6 +184,8 @@ kwargs = {'entity': args.wandb_usr, 'name': args.exp_name, 'project': 'e3_diffus
 wandb.init(**kwargs)
 wandb.save('*.txt')
 
+print("done wandb config")
+
 # Retrieve QM9 dataloaders
 dataloaders, charge_scale = dataset.retrieve_dataloaders(args)
 
