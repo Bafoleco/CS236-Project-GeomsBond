@@ -28,7 +28,7 @@ def batch_stack(props):
         return torch.nn.utils.rnn.pad_sequence(props, batch_first=True, padding_value=0)
 
 
-def drop_zeros(props, to_keep):
+def drop_zeros(props, to_keep, key):
     """
     Function to drop zeros from batches when the entire dataset is padded to the largest molecule size.
 
@@ -47,6 +47,8 @@ def drop_zeros(props, to_keep):
     -----
     TODO : Review whether the behavior when elements are not tensors is safe.
     """
+    if key == "bonds":
+        return props
     if not torch.is_tensor(props[0]):
         return props
     elif props[0].dim() == 0:
@@ -80,7 +82,7 @@ class PreprocessQM9:
 
         to_keep = (batch['charges'].sum(0) > 0)
 
-        batch = {key: drop_zeros(prop, to_keep) for key, prop in batch.items()}
+        batch = {key: drop_zeros(prop, to_keep, key) for key, prop in batch.items()}
 
         atom_mask = batch['charges'] > 0
         batch['atom_mask'] = atom_mask

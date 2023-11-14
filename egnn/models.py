@@ -156,7 +156,7 @@ class EGNN_encoder_QM9(nn.Module):
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method)
+                aggregation_method=aggregation_method, using_bonds=True)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
             self.gnn = GNN(
@@ -191,7 +191,37 @@ class EGNN_encoder_QM9(nn.Module):
     def unwrap_forward(self):
         return self._forward
 
-    def _forward(self, xh, node_mask, edge_mask, context):      
+    def bonds_to_edge_attr(self, bonds, n_nodes):
+        # assuming we have bonds in batch_size x max_num_bonds x bond_desc form
+        # TODO we need proper masking as we are currently padding the edge set
+        # TODO this can definitely be vectorized somehow
+        # TODO we may want to test this
+
+        batch_size, num_edges, bond_params = bonds.shape
+
+        # for batch_idx in range(batch_size):
+        #     for i in range(n_nodes):
+        #         for j in range(n_nodes):
+        #             rows.append(i + batch_idx * n_nodes)
+        #             cols.append(j + batch_idx * n_nodes)
+
+        ## 1 1 1 1 2 2 2 2 3 3 3 3
+        ## 1 2 3 4 1 2 3 4 1 2 3 4
+
+        edge_attr = torch.zeros((batch_size * n_nodes * n_nodes, 1))
+        for batch_idx in range(batch_size):
+            for i in range(num_edges):
+                bond = bonds[batch_idx, i]
+                data = bond[0]
+                start = bond[1]
+                end = bond[2]
+
+                edge_attr[start * n_nodes + end + batch_idx * n_nodes * n_nodes] = data
+                edge_attr[end * n_nodes + start + batch_idx * n_nodes * n_nodes] = data
+
+        return edge_attr
+
+    def _forward(self, xh, bonds, node_mask, edge_mask, context):      
         bs, n_nodes, dims = xh.shape
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
@@ -211,7 +241,10 @@ class EGNN_encoder_QM9(nn.Module):
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
+            # we want to use our bonds as edge attrs
+            edge_attr = self.bonds_to_edge_attr(bonds, n_nodes)
+
+            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, edge_attr=edge_attr)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
         elif self.mode == 'gnn_dynamics':
             xh = torch.cat([x, h], dim=1)

@@ -13,17 +13,24 @@ import torch
 
 
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dtype, property_norms, optim,
-                nodes_dist, gradnorm_queue, dataset_info, prop_dist):
+                nodes_dist, gradnorm_queue, dataset_info, prop_dist, experimental_loader):
     model_dp.train()
     model.train()
     nll_epoch = []
     n_iterations = len(loader)
     for i, data in enumerate(loader):
+        ## TODO I need to match this formatting exactly
         x = data['positions'].to(device, dtype)
         node_mask = data['atom_mask'].to(device, dtype).unsqueeze(2)
         edge_mask = data['edge_mask'].to(device, dtype)
         one_hot = data['one_hot'].to(device, dtype)
         charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+        bonds = data['bonds']
+
+        print(x.shape)
+        print(node_mask.shape)
+        print(edge_mask.shape)
+        print(one_hot.shape)
 
         x = remove_mean_with_mask(x, node_mask)
 
@@ -51,7 +58,7 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
 
         # transform batch through flow
         nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(args, model_dp, nodes_dist,
-                                                                x, h, node_mask, edge_mask, context)
+                                                                x, h, bonds, node_mask, edge_mask, context)
         # standard nll from forward KL
         loss = nll + args.ode_regularization * reg_term
         loss.backward()

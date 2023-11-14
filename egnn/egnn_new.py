@@ -136,6 +136,11 @@ class EquivariantBlock(nn.Module):
         distances, coord_diff = coord2diff(x, edge_index, self.norm_constant)
         if self.sin_embedding is not None:
             distances = self.sin_embedding(distances)
+
+        if edge_attr.allclose(distances):
+            pass
+            # this runs btw, which I don't like
+            # print("this is pretty weird")
         edge_attr = torch.cat([distances, edge_attr], dim=1)
         for i in range(0, self.n_layers):
             h, _ = self._modules["gcl_%d" % i](h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
@@ -150,7 +155,7 @@ class EquivariantBlock(nn.Module):
 class EGNN(nn.Module):
     def __init__(self, in_node_nf, in_edge_nf, hidden_nf, device='cpu', act_fn=nn.SiLU(), n_layers=3, attention=False,
                  norm_diff=True, out_node_nf=None, tanh=False, coords_range=15, norm_constant=1, inv_sublayers=2,
-                 sin_embedding=False, normalization_factor=100, aggregation_method='sum'):
+                 sin_embedding=False, normalization_factor=100, aggregation_method='sum', using_bonds=False):
         super(EGNN, self).__init__()
         if out_node_nf is None:
             out_node_nf = in_node_nf
@@ -169,6 +174,9 @@ class EGNN(nn.Module):
             self.sin_embedding = None
             edge_feat_nf = 2
 
+        if using_bonds:
+            edge_feat_nf += 1
+
         self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)
         for i in range(0, n_layers):
@@ -181,14 +189,22 @@ class EGNN(nn.Module):
                                                                aggregation_method=self.aggregation_method))
         self.to(self.device)
 
-    def forward(self, h, x, edge_index, node_mask=None, edge_mask=None):
+    def forward(self, h, x, edge_index, node_mask=None, edge_mask=None, edge_attr=None):
         # Edit Emiel: Remove velocity as input
         distances, _ = coord2diff(x, edge_index)
         if self.sin_embedding is not None:
             distances = self.sin_embedding(distances)
+
+        if edge_attr != None:
+            edge_attr = torch.cat([distances, edge_attr], dim=1)
+        else:
+            edge_attr = distances
+
+        # print("edge attrs", edge_attr.shape)
+
         h = self.embedding(h)
         for i in range(0, self.n_layers):
-            h, x = self._modules["e_block_%d" % i](h, x, edge_index, node_mask=node_mask, edge_mask=edge_mask, edge_attr=distances)
+            h, x = self._modules["e_block_%d" % i](h, x, edge_index, node_mask=node_mask, edge_mask=edge_mask, edge_attr=edge_attr)
 
         # Important, the bias of the last linear might be non-zero
         h = self.embedding_out(h)

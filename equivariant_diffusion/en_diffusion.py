@@ -919,7 +919,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         
         error = error_x + error_h_cat + error_h_int
 
-        # TODO: Error on bonds
+        # TODO: Error on bonds  
 
         if self.training:
             denom = (self.n_dims + self.in_node_nf) * xh.shape[1]
@@ -933,14 +933,14 @@ class EnHierarchicalVAE(torch.nn.Module):
         eps = self.sample_combined_position_feature_noise(bs, mu.size(1), node_mask)
         return mu + sigma * eps
     
-    def compute_loss(self, x, h, node_mask, edge_mask, context):
+    def compute_loss(self, x, h, bonds, node_mask, edge_mask, context):
         """Computes an estimator for the variational lower bound."""
 
         # Concatenate x, h[integer] and h[categorical].
         xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
 
         # Encoder output.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bonds, node_mask, edge_mask, context)
         
         # KL distance.
         # KL for invariant features.
@@ -975,12 +975,12 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         return loss, {'loss_t': loss.squeeze(), 'rec_error': loss_recon.squeeze()}
 
-    def forward(self, x, h, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
         """
         Computes the ELBO if training. And if eval then always computes NLL.
         """
 
-        loss, loss_dict = self.compute_loss(x, h, node_mask, edge_mask, context)
+        loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context)
 
         neg_log_pxh = loss
 
@@ -999,7 +999,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         z = torch.cat([z_x, z_h], dim=2)
         return z
     
-    def encode(self, x, h, node_mask=None, edge_mask=None, context=None):
+    def encode(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
         """Computes q(z|x)."""
 
         # Concatenate x, h[integer] and h[categorical].
@@ -1008,7 +1008,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         diffusion_utils.assert_mean_zero_with_mask(xh[:, :, :self.n_dims], node_mask)
 
         # Encoder output.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encoder._forward(xh, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encoder._forward(xh, bonds, node_mask, edge_mask, context)
 
         bs, _, _ = z_x_mu.size()
         sigma_0_x = torch.ones(bs, 1, 1).to(z_x_mu) * 0.0032
@@ -1135,13 +1135,13 @@ class EnLatentDiffusion(EnVariationalDiffusion):
 
         return log_p_xh_given_z
     
-    def forward(self, x, h, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """
 
         # Encode data to latent space.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.vae.encode(x, h, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.vae.encode(x, h, bonds, node_mask, edge_mask, context)
         # Compute fixed sigma values.
         t_zeros = torch.zeros(size=(x.size(0), 1), device=x.device)
         gamma_0 = self.inflate_batch_array(self.gamma(t_zeros), x)

@@ -88,6 +88,7 @@ parser.add_argument('--sin_embedding', type=eval, default=False,
 parser.add_argument('--ode_regularization', type=float, default=1e-3)
 parser.add_argument('--dataset', type=str, default='qm9',
                     help='qm9 | qm9_second_half (train only on the last 50K samples of the training dataset)')
+parser.add_argument('--rdkit', action='store_true', default=False)
 parser.add_argument('--datadir', type=str, default='qm9/temp',
                     help='qm9 directory')
 parser.add_argument('--filter_n_atoms', type=int, default=None,
@@ -256,9 +257,10 @@ def main():
 
     best_nll_val = 1e8
     best_nll_test = 1e8
+    experimental_loader = None
     for epoch in range(args.start_epoch, args.n_epochs):
         start_epoch = time.time()
-        train_epoch(args=args, loader=dataloaders['train'], epoch=epoch, model=model, model_dp=model_dp,
+        train_epoch(args=args, loader=dataloaders['train'], experimental_loader=experimental_loader, epoch=epoch, model=model, model_dp=model_dp,
                     model_ema=model_ema, ema=ema, device=device, dtype=dtype, property_norms=property_norms,
                     nodes_dist=nodes_dist, dataset_info=dataset_info,
                     gradnorm_queue=gradnorm_queue, optim=optim, prop_dist=prop_dist)
