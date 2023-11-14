@@ -7,11 +7,12 @@ import os
 from torch.utils.data import DataLoader
 from qm9.data.dataset_class import ProcessedDataset
 from qm9.data.prepare import prepare_dataset
+from rdkit_dataset import get_rdkit_datafiles
 
 
 def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
                         force_download=False, subtract_thermo=False,
-                        remove_h=False):
+                        remove_h=False, rdkit=False):
     """
     Initialize datasets.
 
@@ -56,8 +57,11 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
                'test': args.num_test, 'valid': args.num_valid}
 
     # Download and process dataset. Returns datafiles.
-    datafiles = prepare_dataset(
-        datadir, 'qm9', subset, splits, force_download=force_download)
+    if rdkit:
+        datafiles = get_rdkit_datafiles('qm9')
+    else:
+        datafiles = prepare_dataset(
+            datadir, 'qm9', subset, splits, force_download=force_download)
 
     # Load downloaded/processed datasets
     datasets = {}
@@ -117,8 +121,6 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
     # Now initialize MolecularDataset based upon loaded data
     datasets = {split: ProcessedDataset(data, num_pts=num_pts.get(
         split, -1), included_species=all_species, subtract_thermo=subtract_thermo) for split, data in datasets.items()}
-
-    # Now initialize MolecularDataset based upon loaded data
 
     # Check that all datasets have the same included species:
     assert(len(set(tuple(data.included_species.tolist()) for data in datasets.values())) ==

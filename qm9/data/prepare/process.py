@@ -200,7 +200,7 @@ def process_xyz_gdb9(datafile):
     molecule = {'num_atoms': num_atoms, 'charges': atom_charges, 'positions': atom_positions}
     molecule.update(mol_props)
     molecule = {key: torch.tensor(val) for key, val in molecule.items()}
-    molecule['smiles'] = smiles.split()
-    print(molecule)
+    # molecule['smiles'] = smiles.split()
+    # print(molecule)
 
     return molecule
