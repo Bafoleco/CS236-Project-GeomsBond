@@ -889,7 +889,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
         return (number_of_nodes - 1) * self.n_dims
 
-    def compute_reconstruction_error(self, xh_rec, xh):
+    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds):
         """Computes reconstruction error."""
 
         bs, n_nodes, dims = xh.shape
@@ -917,15 +917,28 @@ class EnHierarchicalVAE(torch.nn.Module):
         else:
             error_h_int = 0.
         
-        error = error_x + error_h_cat + error_h_int
+        # Error on bonds.
+        # Assuming bonds,bonds_rec come in with shape (bs, n_edges, n_bond_orders)
+        # Probably should convert somewhere from n_nodes**2 to n_nodes(n_nodes - 1)
+        # so that we don't apply any loss to some weird undefined edge between the node 
+        # and itself? (and don't double-count that way either but I think that's 
+        # less of an issue.)
+        bs,n_edges,n_bond_orders = bonds.shape
+        assert bonds.shape == bonds_rec.shape
+        bonds_rec = bonds_rec.reshape(bs * n_edges, n_bond_orders)
+        bonds = bonds.reshape(bs * n_nodes, n_bond_orders)
+        error_bonds = F.cross_entropy(bonds_rec, bonds.argmax(dim=1), reduction='none')
+        error_bonds = error_bonds.reshape(bs, n_edges, 1)
+        error_bonds = sum_except_batch(error_bonds)
 
-        # TODO: Error on bonds  
+        error = error_x + error_h_cat + error_h_int
 
         if self.training:
             denom = (self.n_dims + self.in_node_nf) * xh.shape[1]
             error = error / denom
+            error_bonds = error_bonds / (n_edges * n_bond_orders)
 
-        return error
+        return error + error_bonds
     
     def sample_normal(self, mu, sigma, node_mask, fix_noise=False):
         """Samples from a Normal distribution."""
@@ -935,6 +948,8 @@ class EnHierarchicalVAE(torch.nn.Module):
     
     def compute_loss(self, x, h, bonds, node_mask, edge_mask, context):
         """Computes an estimator for the variational lower bound."""
+
+        # TODO: If we adjust latent space, add KL term for bond z
 
         # Concatenate x, h[integer] and h[categorical].
         xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
@@ -963,9 +978,9 @@ class EnHierarchicalVAE(torch.nn.Module):
         diffusion_utils.assert_mean_zero_with_mask(z_xh[:, :, :self.n_dims], node_mask)
 
         # Decoder output (reconstruction).
-        x_recon, h_recon = self.decoder._forward(z_xh, node_mask, edge_mask, context)
+        x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
-        loss_recon = self.compute_reconstruction_error(xh_rec, xh)
+        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds)
 
         # Combining the terms
         assert loss_recon.size() == loss_kl.size()
@@ -1020,7 +1035,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         """Computes p(x|z)."""
 
         # Decoder output (reconstruction).
-        x_recon, h_recon = self.decoder._forward(z_xh, node_mask, edge_mask, context)
+        x_recon, h_recon, bonds_recon = self.decoder._forward(z_xh, node_mask, edge_mask, context)
         diffusion_utils.assert_mean_zero_with_mask(x_recon, node_mask)
 
         xh = torch.cat([x_recon, h_recon], dim=2)
@@ -1034,7 +1049,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         h_int = torch.round(h_int).long() * node_mask
         h = {'integer': h_int, 'categorical': h_cat}
 
-        return x, h
+        return x, h, bonds_recon
 
     @torch.no_grad()
     def reconstruct(self, x, h, node_mask=None, edge_mask=None, context=None):

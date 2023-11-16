@@ -294,6 +294,9 @@ class EGNN_encoder_QM9(nn.Module):
         # For sampling: both stds will be masked in reparameterization
 
         return vel_mean, vel_std, h_mean, h_std
+        # Don't need to modify this for bonds, bc it is read as 
+        # z_x_mu, z_x_sigma, z_h_mu, z_h_sigma in EnHeirarchicalVAE,
+        # and for now we are not changing latent space -- DW
     
     def get_adj_matrix(self, n_nodes, batch_size, device):
         if n_nodes in self._edges_dict:
@@ -366,6 +369,9 @@ class EGNN_decoder_QM9(nn.Module):
         return self._forward
 
     def _forward(self, xh, node_mask, edge_mask, context):
+        # Don't need to modify this input bc it is called as 
+        # self.decoder._forward(z_xh, node_mask, edge_mask, context)
+        # in EnHeirarchicalVAE, and we are not modifying latent space (for now) -- DW
         bs, n_nodes, dims = xh.shape
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
@@ -411,7 +417,7 @@ class EGNN_decoder_QM9(nn.Module):
             h_final = h_final * node_mask
         h_final = h_final.view(bs, n_nodes, -1)
 
-        return vel, h_final
+        return vel, h_final, bonds # TODO Need to modify this to spit out bonds. -- DW
     
     def get_adj_matrix(self, n_nodes, batch_size, device):
         if n_nodes in self._edges_dict:

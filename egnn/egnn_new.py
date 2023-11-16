@@ -139,11 +139,15 @@ class EquivariantBlock(nn.Module):
 
         if edge_attr.allclose(distances):
             pass
-            # this runs btw, which I don't like
+            # this runs btw, which I don't like -- BFC
             # print("this is pretty weird")
+
+            # Are you saying this runs after you included bonds in edge_attr? -- DW
+
         edge_attr = torch.cat([distances, edge_attr], dim=1)
         for i in range(0, self.n_layers):
             h, _ = self._modules["gcl_%d" % i](h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
+            # This underscore corresponds to ignoring the output of the edge model from the GCLs!
         x = self._modules["gcl_equiv"](h, x, edge_index, coord_diff, edge_attr, node_mask, edge_mask)
 
         # Important, the bias of the last linear might be non-zero
@@ -195,6 +199,7 @@ class EGNN(nn.Module):
         if self.sin_embedding is not None:
             distances = self.sin_embedding(distances)
 
+        # Bonds are already included as part of edge_attr!
         if edge_attr != None:
             edge_attr = torch.cat([distances, edge_attr], dim=1)
         else:

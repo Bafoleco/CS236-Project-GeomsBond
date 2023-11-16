@@ -61,7 +61,12 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
                                                                 x, h, bonds, node_mask, edge_mask, context)
         # standard nll from forward KL
         loss = nll + args.ode_regularization * reg_term
-        loss.backward()
+        loss.backward() # What does this do??
+        # losses.compute_loss_and_nll throws an error unless 
+        # args.probabilistic_model == 'diffusion'? 
+        # and reg term seems always zero? -- DW
+        if i == 0: print('David has a question (line 60 of train_test.py)')
+
 
         if args.clip_grad:
             grad_norm = utils.gradient_clipping(model, gradnorm_queue)
@@ -122,6 +127,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
             edge_mask = data['edge_mask'].to(device, dtype)
             one_hot = data['one_hot'].to(device, dtype)
             charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+            # Add the bond = data['bonds'] thing here like above
 
             if args.augment_noise > 0:
                 # Add noise eps ~ N(0, augment_noise) around points.
@@ -172,6 +178,7 @@ def sample_different_sizes_and_save(model, nodes_dist, args, device, dataset_inf
     batch_size = min(batch_size, n_samples)
     for counter in range(int(n_samples/batch_size)):
         nodesxsample = nodes_dist.sample(batch_size)
+        # TODO: modify the sample function to output bonds along with x? or it seems this is only for diffusion?
         one_hot, charges, x, node_mask = sample(args, device, model, prop_dist=prop_dist,
                                                 nodesxsample=nodesxsample,
                                                 dataset_info=dataset_info)
