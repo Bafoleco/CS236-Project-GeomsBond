@@ -884,12 +884,58 @@ class EnHierarchicalVAE(torch.nn.Module):
         self.norm_biases = norm_biases
         self.register_buffer('buffer', torch.zeros(1))
 
+    def process_bonds(self, bonds, n_nodes, n_bond_orders):
+        # assuming we have bonds in batch_size x max_num_bonds x bond_desc form
+        # TODO we need proper masking as we are currently padding the edge set
+        # TODO this can definitely be vectorized somehow
+        # TODO we may want to test this
+
+        batch_size, num_edges, bond_params = bonds.shape
+        total_n_edges = n_nodes * (n_nodes - 1)
+
+        # for batch_idx in range(batch_size):
+        #     for i in range(n_nodes):
+        #         for j in range(n_nodes):
+        #             rows.append(i + batch_idx * n_nodes)
+        #             cols.append(j + batch_idx * n_nodes)
+
+        ## 1 1 1 1 2 2 2 2 3 3 3 3
+        ## 1 2 3 4 1 2 3 4 1 2 3 4
+
+        bond_edge_attr = torch.zeros((batch_size * n_nodes * n_nodes, n_bond_orders))
+        bond_tensor = torch.zeros((batch_size, total_n_edges, n_bond_orders))
+        for batch_idx in range(batch_size):
+            # I'm kind of convinced we don't need this loop over batch_size, and can
+            # just have a first dim corresponding to batch size and then reshape later?
+            for i in range(num_edges):
+                bond = bonds[batch_idx, i]
+                data = bond[0] # Assuming this is just an int with bond order? -- DW
+                start = bond[1]
+                end = bond[2]
+
+                assert isinstance(data, int) and data < n_bond_orders and data > 0,'If this fails, just index into data to get the bond order. We can then try including more bond parameters later!'
+
+                # Modified this to be one-hot over bond order
+                bond_edge_attr[start * n_nodes + end + batch_idx * n_nodes * n_nodes, data] = 1
+                bond_edge_attr[end * n_nodes + start + batch_idx * n_nodes * n_nodes, data] = 1
+
+            # This part can also probably be done faster using some vectorized torch.triu_indices
+            triu_index_to_ij = [(i,j) for i in range(1,n_nodes) for j in range(i)]
+            assert len(triu_index_to_ij) == total_n_edges
+            for triu_idx in range(total_n_edges):
+                i,j = triu_index_to_ij[triu_idx]
+                bond_tensor[batch_idx,triu_idx] = bond_edge_attr[i * n_nodes + j + batch_idx * n_nodes * n_nodes]
+            # Should correspond to 
+            # bond_tensor = torch.tensor([bond_matrix[:,i,j] for i in range(1,n_nodes) for j in range(i)])
+        
+        return bond_edge_attr, bond_tensor
+
     def subspace_dimensionality(self, node_mask):
         """Compute the dimensionality on translation-invariant linear subspace where distributions on x are defined."""
         number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
         return (number_of_nodes - 1) * self.n_dims
 
-    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds):
+    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds_tensor):
         """Computes reconstruction error."""
 
         bs, n_nodes, dims = xh.shape
@@ -923,11 +969,11 @@ class EnHierarchicalVAE(torch.nn.Module):
         # so that we don't apply any loss to some weird undefined edge between the node 
         # and itself? (and don't double-count that way either but I think that's 
         # less of an issue.)
-        bs,n_edges,n_bond_orders = bonds.shape
-        assert bonds.shape == bonds_rec.shape
+        bs,n_edges,n_bond_orders = bonds_tensor.shape
+        assert bonds_tensor.shape == bonds_rec.shape
         bonds_rec = bonds_rec.reshape(bs * n_edges, n_bond_orders)
-        bonds = bonds.reshape(bs * n_nodes, n_bond_orders)
-        error_bonds = F.cross_entropy(bonds_rec, bonds.argmax(dim=1), reduction='none')
+        bonds_tensor = bonds_tensor.reshape(bs * n_edges, n_bond_orders)
+        error_bonds = F.cross_entropy(bonds_rec, bonds_tensor.argmax(dim=1), reduction='none')
         error_bonds = error_bonds.reshape(bs, n_edges, 1)
         error_bonds = sum_except_batch(error_bonds)
 
@@ -954,8 +1000,10 @@ class EnHierarchicalVAE(torch.nn.Module):
         # Concatenate x, h[integer] and h[categorical].
         xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
 
+        bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
+
         # Encoder output.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bonds, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bond_edge_attr, node_mask, edge_mask, context)
         
         # KL distance.
         # KL for invariant features.
@@ -980,7 +1028,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         # Decoder output (reconstruction).
         x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
-        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds)
+        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bond_tensor)
 
         # Combining the terms
         assert loss_recon.size() == loss_kl.size()

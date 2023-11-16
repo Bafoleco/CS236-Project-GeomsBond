@@ -191,37 +191,7 @@ class EGNN_encoder_QM9(nn.Module):
     def unwrap_forward(self):
         return self._forward
 
-    def bonds_to_edge_attr(self, bonds, n_nodes):
-        # assuming we have bonds in batch_size x max_num_bonds x bond_desc form
-        # TODO we need proper masking as we are currently padding the edge set
-        # TODO this can definitely be vectorized somehow
-        # TODO we may want to test this
-
-        batch_size, num_edges, bond_params = bonds.shape
-
-        # for batch_idx in range(batch_size):
-        #     for i in range(n_nodes):
-        #         for j in range(n_nodes):
-        #             rows.append(i + batch_idx * n_nodes)
-        #             cols.append(j + batch_idx * n_nodes)
-
-        ## 1 1 1 1 2 2 2 2 3 3 3 3
-        ## 1 2 3 4 1 2 3 4 1 2 3 4
-
-        edge_attr = torch.zeros((batch_size * n_nodes * n_nodes, 1))
-        for batch_idx in range(batch_size):
-            for i in range(num_edges):
-                bond = bonds[batch_idx, i]
-                data = bond[0]
-                start = bond[1]
-                end = bond[2]
-
-                edge_attr[start * n_nodes + end + batch_idx * n_nodes * n_nodes] = data
-                edge_attr[end * n_nodes + start + batch_idx * n_nodes * n_nodes] = data
-
-        return edge_attr
-
-    def _forward(self, xh, bonds, node_mask, edge_mask, context):      
+    def _forward(self, xh, bonds_edge_attr, node_mask, edge_mask, context):      
         bs, n_nodes, dims = xh.shape
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
@@ -242,9 +212,7 @@ class EGNN_encoder_QM9(nn.Module):
 
         if self.mode == 'egnn_dynamics':
             # we want to use our bonds as edge attrs
-            edge_attr = self.bonds_to_edge_attr(bonds, n_nodes)
-
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, edge_attr=edge_attr)
+            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, edge_attr=bonds_edge_attr)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
         elif self.mode == 'gnn_dynamics':
             xh = torch.cat([x, h], dim=1)
@@ -320,9 +288,41 @@ class EGNN_encoder_QM9(nn.Module):
             return self.get_adj_matrix(n_nodes, batch_size, device)
 
 
+class quadratic_estimator(nn.Module):
+    def __init__(self, latent_node_nf, n_bond_orders):
+        super().__init__()
+        self.latent_node_nf = latent_node_nf
+        self.n_bond_orders = n_bond_orders
+        self.A = torch.nn.Parameter(torch.randn(
+            (n_bond_orders, 1, latent_node_nf, latent_node_nf)
+        ))
+
+    def forward(self, z_xh):
+        bs,n_nodes,latent_node_nf = z_xh.shape
+        assert latent_node_nf == self.latent_node_nf
+
+        # TODO There should be a better way to do this that saves 
+        # half the parameters... something with torch.triu?
+        A_sym = (self.A + self.A.transpose(-1,-2)) / 2
+
+        bond_matrix = z_xh @ A_sym @ z_xh.transpose(-1,-2)
+        # bond_matrix.shape = (n_bond_orders, bs, n_nodes, n_nodes)
+        bond_matrix = bond_matrix.movedim(0,-1)
+        # bond_matrix.shape = (bs, n_nodes, n_nodes, n_bond_orders)
+
+        # TODO need to do any weird .to('cuda') here or later?
+        # Extract only lower-diagonal elements of the bond matrix and 
+        # flatten those dimensions so that the resulting bond tensor is unique
+
+        # TODO make sure this format matches what I implemented in loss!!
+        bond_tensor = torch.tensor([bond_matrix[:,i,j] for i in range(1,n_nodes) for j in range(i)])
+        assert bond_tensor.shape == (bs,n_nodes * (n_nodes - 1),self.n_bond_orders)
+        # TODO: drop these assertions? do they significantly slow down training? 
+        return bond_tensor
+    
 class EGNN_decoder_QM9(nn.Module):
     def __init__(self, in_node_nf, context_node_nf, out_node_nf,
-                 n_dims, hidden_nf=64, device='cpu',
+                 n_dims, n_bond_orders, hidden_nf=64, device='cpu',
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
@@ -348,6 +348,8 @@ class EGNN_decoder_QM9(nn.Module):
                 in_edge_nf=0, hidden_nf=hidden_nf, device=device,
                 act_fn=act_fn, n_layers=n_layers, attention=attention,
                 normalization_factor=normalization_factor, aggregation_method=aggregation_method)
+
+        self.bond_estimator = quadratic_estimator(...,n_bond_orders)
 
         self.num_classes = num_classes
         self.include_charges = include_charges
@@ -398,9 +400,10 @@ class EGNN_decoder_QM9(nn.Module):
             output = self.gnn(xh, edges, node_mask=node_mask)
             vel = output[:, 0:3] * node_mask
             h_final = output[:, 3:]
-
         else:
             raise Exception("Wrong mode %s" % self.mode)
+
+        bonds = self.bond_estimator(xh)
 
         vel = vel.view(bs, n_nodes, -1)
 
@@ -417,7 +420,7 @@ class EGNN_decoder_QM9(nn.Module):
             h_final = h_final * node_mask
         h_final = h_final.view(bs, n_nodes, -1)
 
-        return vel, h_final, bonds # TODO Need to modify this to spit out bonds. -- DW
+        return vel, h_final, bonds 
     
     def get_adj_matrix(self, n_nodes, batch_size, device):
         if n_nodes in self._edges_dict:

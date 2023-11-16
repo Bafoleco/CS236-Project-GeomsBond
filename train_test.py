@@ -59,13 +59,15 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
         # transform batch through flow
         nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(args, model_dp, nodes_dist,
                                                                 x, h, bonds, node_mask, edge_mask, context)
-        # standard nll from forward KL
-        loss = nll + args.ode_regularization * reg_term
-        loss.backward() # What does this do??
+        # What does this do??
         # losses.compute_loss_and_nll throws an error unless 
         # args.probabilistic_model == 'diffusion'? 
         # and reg term seems always zero? -- DW
         if i == 0: print('David has a question (line 60 of train_test.py)')
+         
+        # standard nll from forward KL
+        loss = nll + args.ode_regularization * reg_term
+        loss.backward() 
 
 
         if args.clip_grad:
