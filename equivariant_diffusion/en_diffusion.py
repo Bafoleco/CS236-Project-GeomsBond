@@ -917,7 +917,7 @@ class EnHierarchicalVAE(torch.nn.Module):
                 start = bond[1]
                 end = bond[2]
 
-                assert isinstance(data, int) and data < n_bond_orders and data > 0,'If this fails, just index into data to get the bond order. We can then try including more bond parameters later!'
+                assert data < n_bond_orders and data >= 0,'If this fails, just index into data to get the bond order. We can then try including more bond parameters later!'
 
                 # Modified this to be one-hot over bond order
                 bond_edge_attr[start * n_nodes + end + batch_idx * n_nodes * n_nodes, data] = 1
@@ -925,6 +925,8 @@ class EnHierarchicalVAE(torch.nn.Module):
 
             # This part can also probably be done faster using some vectorized torch.triu_indices
             triu_index_to_ij = [(i,j) for i in range(1,n_nodes) for j in range(i)]
+            print(len(triu_index_to_ij))
+            print(total_n_edges)
             assert len(triu_index_to_ij) == total_n_edges
             for triu_idx in range(total_n_edges):
                 i,j = triu_index_to_ij[triu_idx]
