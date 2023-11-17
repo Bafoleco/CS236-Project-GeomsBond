@@ -892,6 +892,8 @@ class EnHierarchicalVAE(torch.nn.Module):
         # TODO this can definitely be vectorized somehow
         # TODO we may want to test this
 
+        print("processing bonds: ", bonds)
+
         batch_size, num_edges, bond_params = bonds.shape
         total_n_edges = n_nodes * (n_nodes - 1)
 
@@ -1001,12 +1003,13 @@ class EnHierarchicalVAE(torch.nn.Module):
     def compute_loss(self, x, h, bonds, node_mask, edge_mask, context):
         """Computes an estimator for the variational lower bound."""
 
+        print("compute loss")
+        bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
+
         # TODO: If we adjust latent space, add KL term for bond z
 
         # Concatenate x, h[integer] and h[categorical].
         xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
-
-        bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
 
         # Encoder output.
         z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bond_edge_attr, node_mask, edge_mask, context)
@@ -1076,8 +1079,13 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         diffusion_utils.assert_mean_zero_with_mask(xh[:, :, :self.n_dims], node_mask)
 
+        if self.include_bonds:
+            bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
+        else:
+            bond_edge_attr = None
+
         # Encoder output.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encoder._forward(xh, bonds, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encoder._forward(xh, bond_edge_attr, node_mask, edge_mask, context)
 
         bs, _, _ = z_x_mu.size()
         sigma_0_x = torch.ones(bs, 1, 1).to(z_x_mu) * 0.0032

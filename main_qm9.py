@@ -147,6 +147,8 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if args.cuda else "cpu")
 dtype = torch.float32
 
+print("training with cuda? ", args.cuda)
+
 if args.resume is not None:
     exp_name = args.exp_name + '_resume'
     start_epoch = args.start_epoch

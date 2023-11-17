@@ -129,7 +129,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
             edge_mask = data['edge_mask'].to(device, dtype)
             one_hot = data['one_hot'].to(device, dtype)
             charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
-            # Add the bond = data['bonds'] thing here like above
+            bonds = data['bonds'] if args.rdkit else None
 
             if args.augment_noise > 0:
                 # Add noise eps ~ N(0, augment_noise) around points.
@@ -152,7 +152,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
 
             # transform batch through flow
             nll, _, _ = losses.compute_loss_and_nll(args, eval_model, nodes_dist, x, h,
-                                                    node_mask, edge_mask, context)
+                                                    bonds, node_mask, edge_mask, context)
             # standard nll from forward KL
 
             nll_epoch += nll.item() * batch_size
