@@ -140,7 +140,7 @@ class EGNN_encoder_QM9(nn.Module):
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
-                 include_charges=True):
+                 include_charges=True, encode_bonds=False):
         '''
         :param in_node_nf: Number of invariant features for input nodes.'''
         super().__init__()
@@ -156,7 +156,7 @@ class EGNN_encoder_QM9(nn.Module):
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method, using_bonds=True)
+                aggregation_method=aggregation_method, using_bonds=encode_bonds)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
             self.gnn = GNN(
@@ -322,11 +322,11 @@ class quadratic_estimator(nn.Module):
     
 class EGNN_decoder_QM9(nn.Module):
     def __init__(self, in_node_nf, context_node_nf, out_node_nf,
-                 n_dims, n_bond_orders, hidden_nf=64, device='cpu',
+                 n_dims, hidden_nf=64, device='cpu',
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
-                 include_charges=True):
+                 include_charges=True, n_bond_orders=4, predict_bonds=False):
         super().__init__()
 
         include_charges = int(include_charges)
@@ -349,7 +349,8 @@ class EGNN_decoder_QM9(nn.Module):
                 act_fn=act_fn, n_layers=n_layers, attention=attention,
                 normalization_factor=normalization_factor, aggregation_method=aggregation_method)
 
-        self.bond_estimator = quadratic_estimator(...,n_bond_orders)
+        if predict_bonds:
+            self.bond_estimator = quadratic_estimator(hidden_nf, n_bond_orders)
 
         self.num_classes = num_classes
         self.include_charges = include_charges
@@ -357,6 +358,7 @@ class EGNN_decoder_QM9(nn.Module):
         self.device = device
         self.n_dims = n_dims
         self._edges_dict = {}
+        self.predict_bonds = predict_bonds
         # self.condition_time = condition_time
 
     def forward(self, t, xh, node_mask, edge_mask, context=None):
@@ -403,7 +405,7 @@ class EGNN_decoder_QM9(nn.Module):
         else:
             raise Exception("Wrong mode %s" % self.mode)
 
-        bonds = self.bond_estimator(xh)
+        bonds = self.bond_estimator(xh) if self.predict_bonds else None
 
         vel = vel.view(bs, n_nodes, -1)
 

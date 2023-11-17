@@ -866,10 +866,12 @@ class EnHierarchicalVAE(torch.nn.Module):
             in_node_nf: int, n_dims: int, latent_node_nf: int,
             kl_weight: float,
             norm_values=(1., 1., 1.), norm_biases=(None, 0., 0.), 
-            include_charges=True):
+            include_charges=True,
+            include_bonds=False):
         super().__init__()
 
         self.include_charges = include_charges
+        self.include_bonds = include_bonds
 
         self.encoder = encoder
         self.decoder = decoder
@@ -963,26 +965,30 @@ class EnHierarchicalVAE(torch.nn.Module):
         else:
             error_h_int = 0.
         
-        # Error on bonds.
-        # Assuming bonds,bonds_rec come in with shape (bs, n_edges, n_bond_orders)
-        # Probably should convert somewhere from n_nodes**2 to n_nodes(n_nodes - 1)
-        # so that we don't apply any loss to some weird undefined edge between the node 
-        # and itself? (and don't double-count that way either but I think that's 
-        # less of an issue.)
-        bs,n_edges,n_bond_orders = bonds_tensor.shape
-        assert bonds_tensor.shape == bonds_rec.shape
-        bonds_rec = bonds_rec.reshape(bs * n_edges, n_bond_orders)
-        bonds_tensor = bonds_tensor.reshape(bs * n_edges, n_bond_orders)
-        error_bonds = F.cross_entropy(bonds_rec, bonds_tensor.argmax(dim=1), reduction='none')
-        error_bonds = error_bonds.reshape(bs, n_edges, 1)
-        error_bonds = sum_except_batch(error_bonds)
+        if self.include_bonds:
+            # Error on bonds.
+            # Assuming bonds,bonds_rec come in with shape (bs, n_edges, n_bond_orders)
+            # Probably should convert somewhere from n_nodes**2 to n_nodes(n_nodes - 1)
+            # so that we don't apply any loss to some weird undefined edge between the node 
+            # and itself? (and don't double-count that way either but I think that's 
+            # less of an issue.)
+            bs,n_edges,n_bond_orders = bonds_tensor.shape
+            assert bonds_tensor.shape == bonds_rec.shape
+            bonds_rec = bonds_rec.reshape(bs * n_edges, n_bond_orders)
+            bonds_tensor = bonds_tensor.reshape(bs * n_edges, n_bond_orders)
+            error_bonds = F.cross_entropy(bonds_rec, bonds_tensor.argmax(dim=1), reduction='none')
+            error_bonds = error_bonds.reshape(bs, n_edges, 1)
+            error_bonds = sum_except_batch(error_bonds)
+        else:
+            error_bonds = 0
 
         error = error_x + error_h_cat + error_h_int
 
         if self.training:
             denom = (self.n_dims + self.in_node_nf) * xh.shape[1]
             error = error / denom
-            error_bonds = error_bonds / (n_edges * n_bond_orders)
+            if self.include_bonds:
+                error_bonds = error_bonds / (n_edges * n_bond_orders)
 
         return error + error_bonds
     
@@ -1224,9 +1230,9 @@ class EnLatentDiffusion(EnVariationalDiffusion):
         if self.trainable_ae:
             xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
             # Decoder output (reconstruction).
-            x_recon, h_recon = self.vae.decoder._forward(z_xh, node_mask, edge_mask, context)
+            x_recon, h_recon, bonds_rec = self.vae.decoder._forward(z_xh, node_mask, edge_mask, context)
             xh_rec = torch.cat([x_recon, h_recon], dim=2)
-            loss_recon = self.vae.compute_reconstruction_error(xh_rec, xh)
+            loss_recon = self.vae.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds)
         else:
             loss_recon = 0
 

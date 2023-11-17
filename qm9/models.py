@@ -73,7 +73,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train):
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method,
-        include_charges=args.include_charges
+        include_charges=args.include_charges, encode_bonds=args.include_bonds
         )
     
     decoder = EGNN_decoder_QM9(
@@ -94,7 +94,8 @@ def get_autoencoder(args, device, dataset_info, dataloader_train):
         latent_node_nf=args.latent_nf,
         kl_weight=args.kl_weight,
         norm_values=args.normalize_factors,
-        include_charges=args.include_charges
+        include_charges=args.include_charges,
+        include_bonds=args.include_bonds
         )
 
     return vae, nodes_dist, prop_dist

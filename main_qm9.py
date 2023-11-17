@@ -43,6 +43,8 @@ parser.add_argument('--model', type=str, default='egnn_dynamics',
 parser.add_argument('--probabilistic_model', type=str, default='diffusion',
                     help='diffusion')
 
+parser.add_argument('--include_bonds', action='store_true', default=False)
+
 # Training complexity is O(1) (unaffected), but sampling complexity is O(steps).
 parser.add_argument('--diffusion_steps', type=int, default=500)
 parser.add_argument('--diffusion_noise_schedule', type=str, default='polynomial_2',

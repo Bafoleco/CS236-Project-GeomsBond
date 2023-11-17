@@ -179,6 +179,12 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
 charge_dict = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'F': 9}
 all_species = torch.tensor([0, 1, 6, 7, 8, 9])
 
+def bond_type_to_int(bond_type):
+    type_map = {BondType.SINGLE: 0, BondType.DOUBLE: 1, BondType.TRIPLE: 2, BondType.AROMATIC: 3}
+    if bond_type not in type_map:
+        print("uknown bond type: " + bond_type)
+    return type_map[bond_type]
+
 def rdmol_to_data(mol:Mol, smiles=None):
     assert mol.GetNumConformers() == 1
     N = mol.GetNumAtoms()
@@ -189,10 +195,16 @@ def rdmol_to_data(mol:Mol, smiles=None):
 
     data = {}
 
+    # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+
+    # for bond in mol.GetBonds():
+    #     print(bond.GetBondType())
+
     data['positions'] = pos
     data['charges'] = torch.tensor([charge_dict[atom.GetSymbol()] for atom in mol.GetAtoms()])
-    data['bonds'] = torch.tensor([(bond.GetBondType(), bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()) 
+    data['bonds'] = torch.tensor([(bond_type_to_int(bond.GetBondType()), bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()) 
               for bond in mol.GetBonds()])
+
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 
     # print(data['one_hot'])
