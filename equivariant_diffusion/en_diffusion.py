@@ -5,7 +5,7 @@ import torch
 from egnn import models
 from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
-
+from bond_helpers import bond_accuracy, get_bond_edge_attr, get_one_hot_bonds, check_one_hot_bonds
 
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
@@ -872,6 +872,7 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         self.include_charges = include_charges
         self.include_bonds = include_bonds
+        self.n_bond_orders = 5
 
         self.encoder = encoder
         self.decoder = decoder
@@ -879,6 +880,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         self.in_node_nf = in_node_nf
         self.n_dims = n_dims
         self.latent_node_nf = latent_node_nf
+        print("vae latent_node_nf: ", self.latent_node_nf)
         self.num_classes = self.in_node_nf - self.include_charges
         self.kl_weight = kl_weight
 
@@ -886,62 +888,13 @@ class EnHierarchicalVAE(torch.nn.Module):
         self.norm_biases = norm_biases
         self.register_buffer('buffer', torch.zeros(1))
 
-    def process_bonds(self, bonds, n_nodes, n_bond_orders):
-        # assuming we have bonds in batch_size x max_num_bonds x bond_desc form
-        # TODO we need proper masking as we are currently padding the edge set
-        # TODO this can definitely be vectorized somehow
-        # TODO we may want to test this
-
-        print("processing bonds: ", bonds)
-
-        batch_size, num_edges, bond_params = bonds.shape
-        total_n_edges = n_nodes * (n_nodes - 1)
-
-        # for batch_idx in range(batch_size):
-        #     for i in range(n_nodes):
-        #         for j in range(n_nodes):
-        #             rows.append(i + batch_idx * n_nodes)
-        #             cols.append(j + batch_idx * n_nodes)
-
-        ## 1 1 1 1 2 2 2 2 3 3 3 3
-        ## 1 2 3 4 1 2 3 4 1 2 3 4
-
-        bond_edge_attr = torch.zeros((batch_size * n_nodes * n_nodes, n_bond_orders))
-        bond_tensor = torch.zeros((batch_size, total_n_edges, n_bond_orders))
-        for batch_idx in range(batch_size):
-            # I'm kind of convinced we don't need this loop over batch_size, and can
-            # just have a first dim corresponding to batch size and then reshape later?
-            for i in range(num_edges):
-                bond = bonds[batch_idx, i]
-                data = bond[0] # Assuming this is just an int with bond order? -- DW
-                start = bond[1]
-                end = bond[2]
-
-                assert data < n_bond_orders and data >= 0,'If this fails, just index into data to get the bond order. We can then try including more bond parameters later!'
-
-                # Modified this to be one-hot over bond order
-                bond_edge_attr[start * n_nodes + end + batch_idx * n_nodes * n_nodes, data] = 1
-                bond_edge_attr[end * n_nodes + start + batch_idx * n_nodes * n_nodes, data] = 1
-
-            # This part can also probably be done faster using some vectorized torch.triu_indices
-            triu_index_to_ij = [(i,j) for i in range(1,n_nodes) for j in range(i)]
-            print(len(triu_index_to_ij))
-            print(total_n_edges)
-            assert len(triu_index_to_ij) == total_n_edges
-            for triu_idx in range(total_n_edges):
-                i,j = triu_index_to_ij[triu_idx]
-                bond_tensor[batch_idx,triu_idx] = bond_edge_attr[i * n_nodes + j + batch_idx * n_nodes * n_nodes]
-            # Should correspond to 
-            # bond_tensor = torch.tensor([bond_matrix[:,i,j] for i in range(1,n_nodes) for j in range(i)])
-        
-        return bond_edge_attr, bond_tensor
 
     def subspace_dimensionality(self, node_mask):
         """Compute the dimensionality on translation-invariant linear subspace where distributions on x are defined."""
         number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
         return (number_of_nodes - 1) * self.n_dims
 
-    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds_tensor):
+    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds, edge_mask=None):
         """Computes reconstruction error."""
 
         bs, n_nodes, dims = xh.shape
@@ -976,13 +929,25 @@ class EnHierarchicalVAE(torch.nn.Module):
             # so that we don't apply any loss to some weird undefined edge between the node 
             # and itself? (and don't double-count that way either but I think that's 
             # less of an issue.)
-            bs,n_edges,n_bond_orders = bonds_tensor.shape
+            # bs,n_edges,n_bond_orders = bonds_tensor.shape
+            # print(bonds_tensor.shape)
+            # print(bonds_rec.shape)
+            bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
+            print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
+
+            n_edges = n_nodes * n_nodes 
+
+            print("bonds rec: ", bonds_rec.shape)
+            # print("bonds tensor: ", bonds_tensor.shape)
+
             assert bonds_tensor.shape == bonds_rec.shape
-            bonds_rec = bonds_rec.reshape(bs * n_edges, n_bond_orders)
-            bonds_tensor = bonds_tensor.reshape(bs * n_edges, n_bond_orders)
+            bonds_rec = bonds_rec.reshape(bs * n_edges, self.n_bond_orders)
+            bonds_tensor = bonds_tensor.reshape(bs * n_edges, self.n_bond_orders)
             error_bonds = F.cross_entropy(bonds_rec, bonds_tensor.argmax(dim=1), reduction='none')
-            error_bonds = error_bonds.reshape(bs, n_edges, 1)
+
+            error_bonds = error_bonds.reshape(bs, n_edges, 1) * edge_mask.unsqueeze(2)
             error_bonds = sum_except_batch(error_bonds)
+
         else:
             error_bonds = 0
 
@@ -992,9 +957,10 @@ class EnHierarchicalVAE(torch.nn.Module):
             denom = (self.n_dims + self.in_node_nf) * xh.shape[1]
             error = error / denom
             if self.include_bonds:
-                error_bonds = error_bonds / (n_edges * n_bond_orders)
-
-        return error + error_bonds
+                error_bonds = error_bonds / (n_edges * self.n_bond_orders)
+        
+        print("error bonds: ", error_bonds.mean())
+        return error + 10 * error_bonds
     
     def sample_normal(self, mu, sigma, node_mask, fix_noise=False):
         """Samples from a Normal distribution."""
@@ -1005,8 +971,10 @@ class EnHierarchicalVAE(torch.nn.Module):
     def compute_loss(self, x, h, bonds, node_mask, edge_mask, context):
         """Computes an estimator for the variational lower bound."""
 
-        print("compute loss")
-        bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
+        # # print("compute loss")
+        # if self.include_bonds:
+        #     # bond_edge_attr, bond_tensor = self.process_bonds(bonds, x.shape[1], n_bond_orders=5)
+        #     bond_edge_attr = get_bond_edge_attr(bonds, x.shape[1], self.n_bond_orders)
 
         # TODO: If we adjust latent space, add KL term for bond z
 
@@ -1014,7 +982,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
 
         # Encoder output.
-        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bond_edge_attr, node_mask, edge_mask, context)
+        z_x_mu, z_x_sigma, z_h_mu, z_h_sigma = self.encode(x, h, bonds, node_mask, edge_mask, context)
         
         # KL distance.
         # KL for invariant features.
@@ -1039,7 +1007,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         # Decoder output (reconstruction).
         x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
-        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bond_tensor)
+        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask)
 
         # Combining the terms
         assert loss_recon.size() == loss_kl.size()
@@ -1082,7 +1050,9 @@ class EnHierarchicalVAE(torch.nn.Module):
         diffusion_utils.assert_mean_zero_with_mask(xh[:, :, :self.n_dims], node_mask)
 
         if self.include_bonds:
-            bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=4)
+            # bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=5)
+            bond_edge_attr = get_bond_edge_attr(bonds, xh.shape[1], self.n_bond_orders)
+            print()
         else:
             bond_edge_attr = None
 
@@ -1242,7 +1212,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
             # Decoder output (reconstruction).
             x_recon, h_recon, bonds_rec = self.vae.decoder._forward(z_xh, node_mask, edge_mask, context)
             xh_rec = torch.cat([x_recon, h_recon], dim=2)
-            loss_recon = self.vae.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds)
+            loss_recon = self.vae.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask)
         else:
             loss_recon = 0
 

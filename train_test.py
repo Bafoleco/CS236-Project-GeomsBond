@@ -25,12 +25,12 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
         edge_mask = data['edge_mask'].to(device, dtype)
         one_hot = data['one_hot'].to(device, dtype)
         charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
-        bonds = data['bonds'] if args.rdkit else None
+        bonds = data['bonds'].to(device, int) if args.rdkit else None
 
-        print(x.shape)
-        print(node_mask.shape)
-        print(edge_mask.shape)
-        print(one_hot.shape)
+        # print(x.shape)
+        # print(node_mask.shape)
+        # print(edge_mask.shape)
+        # print(one_hot.shape)
 
         x = remove_mean_with_mask(x, node_mask)
 
@@ -129,7 +129,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
             edge_mask = data['edge_mask'].to(device, dtype)
             one_hot = data['one_hot'].to(device, dtype)
             charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
-            bonds = data['bonds'] if args.rdkit else None
+            bonds = data['bonds'].to(device, int) if args.rdkit else None
 
             if args.augment_noise > 0:
                 # Add noise eps ~ N(0, augment_noise) around points.

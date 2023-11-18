@@ -288,7 +288,7 @@ class EGNN_encoder_QM9(nn.Module):
             return self.get_adj_matrix(n_nodes, batch_size, device)
 
 
-class quadratic_estimator(nn.Module):
+class QuadraticEstimator(nn.Module):
     def __init__(self, latent_node_nf, n_bond_orders):
         super().__init__()
         self.latent_node_nf = latent_node_nf
@@ -297,15 +297,26 @@ class quadratic_estimator(nn.Module):
             (n_bond_orders, 1, latent_node_nf, latent_node_nf)
         ))
 
+        # mlp embedding of latents
+        self.mlp = nn.Sequential(
+            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.SiLU(),
+            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.SiLU(),
+        )
+
     def forward(self, z_xh):
         bs,n_nodes,latent_node_nf = z_xh.shape
+
+        # shoot, I may have been wrong about how promising this was
+        # it seems pretty weird to treat x and h the same way
         assert latent_node_nf == self.latent_node_nf
 
         # TODO There should be a better way to do this that saves 
         # half the parameters... something with torch.triu?
         A_sym = (self.A + self.A.transpose(-1,-2)) / 2
 
-        bond_matrix = z_xh @ A_sym @ z_xh.transpose(-1,-2)
+        bond_matrix = self.mlp(z_xh) @ A_sym @ self.mlp(z_xh).transpose(-1,-2)
         # bond_matrix.shape = (n_bond_orders, bs, n_nodes, n_nodes)
         bond_matrix = bond_matrix.movedim(0,-1)
         # bond_matrix.shape = (bs, n_nodes, n_nodes, n_bond_orders)
@@ -315,10 +326,10 @@ class quadratic_estimator(nn.Module):
         # flatten those dimensions so that the resulting bond tensor is unique
 
         # TODO make sure this format matches what I implemented in loss!!
-        bond_tensor = torch.tensor([bond_matrix[:,i,j] for i in range(1,n_nodes) for j in range(i)])
-        assert bond_tensor.shape == (bs,n_nodes * (n_nodes - 1),self.n_bond_orders)
+        # bond_tensor = torch.tensor([bond_matrix[:,i,j] for i in range(1,n_nodes) for j in range(i)])
+        # assert bond_tensor.shape == (bs,n_nodes * (n_nodes - 1),self.n_bond_orders)
         # TODO: drop these assertions? do they significantly slow down training? 
-        return bond_tensor
+        return bond_matrix
     
 class EGNN_decoder_QM9(nn.Module):
     def __init__(self, in_node_nf, context_node_nf, out_node_nf,
@@ -326,7 +337,7 @@ class EGNN_decoder_QM9(nn.Module):
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
-                 include_charges=True, n_bond_orders=4, predict_bonds=False):
+                 include_charges=True, n_bond_orders=5, predict_bonds=True):
         super().__init__()
 
         include_charges = int(include_charges)
@@ -350,7 +361,8 @@ class EGNN_decoder_QM9(nn.Module):
                 normalization_factor=normalization_factor, aggregation_method=aggregation_method)
 
         if predict_bonds:
-            self.bond_estimator = quadratic_estimator(hidden_nf, n_bond_orders)
+            print("out_node_nf: ", out_node_nf)
+            self.bond_estimator = QuadraticEstimator(in_node_nf + n_dims, n_bond_orders)
 
         self.num_classes = num_classes
         self.include_charges = include_charges
@@ -377,6 +389,8 @@ class EGNN_decoder_QM9(nn.Module):
         # self.decoder._forward(z_xh, node_mask, edge_mask, context)
         # in EnHeirarchicalVAE, and we are not modifying latent space (for now) -- DW
         bs, n_nodes, dims = xh.shape
+        bonds = self.bond_estimator(xh) if self.predict_bonds else None
+
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
         edges = [x.to(self.device) for x in edges]
@@ -404,8 +418,6 @@ class EGNN_decoder_QM9(nn.Module):
             h_final = output[:, 3:]
         else:
             raise Exception("Wrong mode %s" % self.mode)
-
-        bonds = self.bond_estimator(xh) if self.predict_bonds else None
 
         vel = vel.view(bs, n_nodes, -1)
 

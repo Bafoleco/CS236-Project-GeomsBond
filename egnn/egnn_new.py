@@ -179,7 +179,8 @@ class EGNN(nn.Module):
             edge_feat_nf = 2
 
         if using_bonds:
-            edge_feat_nf += 1
+            # TODO parametrize
+            edge_feat_nf += 5
 
         self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)
@@ -202,6 +203,8 @@ class EGNN(nn.Module):
         # Bonds are already included as part of edge_attr!
         if edge_attr != None:
             edge_attr = torch.cat([distances, edge_attr], dim=1)
+            # print("edge attrs", edge_attr.shape)
+            # print("expected features", distances.shape[1])
         else:
             edge_attr = distances
 

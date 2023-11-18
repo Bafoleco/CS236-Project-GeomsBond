@@ -32,7 +32,7 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     dataset_name = "qm9"
     conf_per_mol = 1
     train_size = 0.8
-    tot_mol_size = 130000
+    tot_mol_size = 30000
 
     # set random seed
     if seed is None:
@@ -180,9 +180,10 @@ charge_dict = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'F': 9}
 all_species = torch.tensor([0, 1, 6, 7, 8, 9])
 
 def bond_type_to_int(bond_type):
-    type_map = {BondType.SINGLE: 0, BondType.DOUBLE: 1, BondType.TRIPLE: 2, BondType.AROMATIC: 3}
+    type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
     if bond_type not in type_map:
         print("uknown bond type: " + bond_type)
+        exit(-1)
     return type_map[bond_type]
 
 def rdmol_to_data(mol:Mol, smiles=None):
