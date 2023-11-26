@@ -864,7 +864,7 @@ class EnHierarchicalVAE(torch.nn.Module):
             encoder: models.EGNN_encoder_QM9,
             decoder: models.EGNN_decoder_QM9,
             in_node_nf: int, n_dims: int, latent_node_nf: int,
-            kl_weight: float,
+            n_bond_orders: int, kl_weight: float, 
             norm_values=(1., 1., 1.), norm_biases=(None, 0., 0.), 
             include_charges=True,
             include_bonds=False):
@@ -872,7 +872,6 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         self.include_charges = include_charges
         self.include_bonds = include_bonds
-        self.n_bond_orders = 5
 
         self.encoder = encoder
         self.decoder = decoder
@@ -880,6 +879,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         self.in_node_nf = in_node_nf
         self.n_dims = n_dims
         self.latent_node_nf = latent_node_nf
+        self.n_bond_orders = n_bond_orders 
         print("vae latent_node_nf: ", self.latent_node_nf)
         self.num_classes = self.in_node_nf - self.include_charges
         self.kl_weight = kl_weight
@@ -973,7 +973,7 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         # # print("compute loss")
         # if self.include_bonds:
-        #     # bond_edge_attr, bond_tensor = self.process_bonds(bonds, x.shape[1], n_bond_orders=5)
+        #     # bond_edge_attr, bond_tensor = self.process_bonds(bonds, x.shape[1], n_bond_orders)
         #     bond_edge_attr = get_bond_edge_attr(bonds, x.shape[1], self.n_bond_orders)
 
         # TODO: If we adjust latent space, add KL term for bond z
@@ -1050,7 +1050,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         diffusion_utils.assert_mean_zero_with_mask(xh[:, :, :self.n_dims], node_mask)
 
         if self.include_bonds:
-            # bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders=5)
+            # bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders)
             bond_edge_attr = get_bond_edge_attr(bonds, xh.shape[1], self.n_bond_orders)
             print()
         else:
