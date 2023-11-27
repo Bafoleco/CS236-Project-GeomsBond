@@ -23,6 +23,7 @@ class EGNN_dynamics_QM9(nn.Module):
                 aggregation_method=aggregation_method)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
+            print('WARNNING: Using GNN dynamics! (for the EGNN dynamics QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, in_edge_nf=0,
                 hidden_nf=hidden_nf, out_node_nf=3 + in_node_nf, device=device,
@@ -152,7 +153,7 @@ class EGNN_encoder_QM9(nn.Module):
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=hidden_nf, 
-                in_edge_nf=1, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                in_edge_nf=None, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
@@ -348,7 +349,7 @@ class EGNN_decoder_QM9(nn.Module):
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=out_node_nf, 
-                in_edge_nf=1, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                in_edge_nf=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,

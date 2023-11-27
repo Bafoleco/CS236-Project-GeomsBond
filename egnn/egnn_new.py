@@ -14,7 +14,9 @@ class GCL(nn.Module):
         self.edge_mlp = nn.Sequential(
             nn.Linear(input_edge + edges_in_d, hidden_nf),
             act_fn,
-            nn.Linear(hidden_nf, hidden_nf),
+            # nn.Linear(hidden_nf, hidden_nf),
+            # TODO: make sure this change does not break anything! and makes sense!
+            nn.Linear(hidden_nf, edges_in_d),
             act_fn)
 
         self.node_mlp = nn.Sequential(
@@ -24,7 +26,9 @@ class GCL(nn.Module):
 
         if self.attention:
             self.att_mlp = nn.Sequential(
-                nn.Linear(hidden_nf, 1),
+                # nn.Linear(hidden_nf, 1),
+                # Corresponding change here
+                nn.Linear(edges_in_d, 1),
                 nn.Sigmoid())
 
     def edge_model(self, source, target, edge_attr, edge_mask):
@@ -42,6 +46,7 @@ class GCL(nn.Module):
 
         if edge_mask is not None:
             out = out * edge_mask
+            # TODO: make sure this masking is correct with change to out dim
         return out, mij
 
     def node_model(self, x, edge_index, edge_attr, node_attr):
@@ -62,16 +67,20 @@ class GCL(nn.Module):
         h, agg = self.node_model(h, edge_index, edge_feat, node_attr)
         if node_mask is not None:
             h = h * node_mask
-        return h, mij
+        # return h, mij # Not sure why they would return mij instead of edge_feat
+            # when the latter is just the former possibly with attention
+        return h,edge_feat
 
 
 class EquivariantUpdate(nn.Module):
     def __init__(self, hidden_nf, normalization_factor, aggregation_method,
-                 edges_in_d=1, act_fn=nn.SiLU(), tanh=False, coords_range=10.0):
+                 edges_in_d=1, edge_feat_d=1, act_fn=nn.SiLU(), tanh=False, coords_range=10.0):
+        # TODO: Understand why edges_in_d=1 instead of 0. Should correspond
+        # to the case when edge_attr is None but gets concatted in coord_model input_tensor?
         super(EquivariantUpdate, self).__init__()
         self.tanh = tanh
         self.coords_range = coords_range
-        input_edge = hidden_nf * 2 + edges_in_d
+        input_edge = hidden_nf * 2 + edges_in_d + edge_feat_d
         layer = nn.Linear(hidden_nf, 1, bias=False)
         torch.nn.init.xavier_uniform_(layer.weight, gain=0.001)
         self.coord_mlp = nn.Sequential(
@@ -83,9 +92,10 @@ class EquivariantUpdate(nn.Module):
         self.normalization_factor = normalization_factor
         self.aggregation_method = aggregation_method
 
-    def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_mask):
+    def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_feat, edge_mask):
+        raise NotImplementedError("Get rid of edge_feat! replace it by passing edge features into edge_attr!")
         row, col = edge_index
-        input_tensor = torch.cat([h[row], h[col], edge_attr], dim=1)
+        input_tensor = torch.cat([h[row], h[col], edge_attr, edge_feat], dim=1)
         if self.tanh:
             trans = coord_diff * torch.tanh(self.coord_mlp(input_tensor)) * self.coords_range
         else:
@@ -98,8 +108,8 @@ class EquivariantUpdate(nn.Module):
         coord = coord + agg
         return coord
 
-    def forward(self, h, coord, edge_index, coord_diff, edge_attr=None, node_mask=None, edge_mask=None):
-        coord = self.coord_model(h, coord, edge_index, coord_diff, edge_attr, edge_mask)
+    def forward(self, h, coord, edge_index, coord_diff, edge_attr=None, edge_feat=None, node_mask=None, edge_mask=None):
+        coord = self.coord_model(h, coord, edge_index, coord_diff, edge_attr, edge_feat, edge_mask)
         if node_mask is not None:
             coord = coord * node_mask
         return coord
@@ -125,7 +135,10 @@ class EquivariantBlock(nn.Module):
                                               act_fn=act_fn, attention=attention,
                                               normalization_factor=self.normalization_factor,
                                               aggregation_method=self.aggregation_method))
-        self.add_module("gcl_equiv", EquivariantUpdate(hidden_nf, edges_in_d=edge_feat_nf, act_fn=nn.SiLU(), tanh=tanh,
+        self.add_module("gcl_equiv", EquivariantUpdate(hidden_nf, edges_in_d=edge_feat_nf,
+                                                       edge_feat_d=self.hidden_nf, act_fn=nn.SiLU(), tanh=tanh,
+                                                       # TODO: make sure edge_feat_d = self.hidden_nf is correct
+                                                       # (it should be same as edge_feat dim!)
                                                        coords_range=self.coords_range_layer,
                                                        normalization_factor=self.normalization_factor,
                                                        aggregation_method=self.aggregation_method))
@@ -145,10 +158,12 @@ class EquivariantBlock(nn.Module):
             # Are you saying this runs after you included bonds in edge_attr? -- DW
 
         edge_attr = torch.cat([distances, edge_attr], dim=1)
+        edge_feat = None # TODO: Initialize with something better? edge_attr? need to modify feature dims if so
         for i in range(0, self.n_layers):
-            h, _ = self._modules["gcl_%d" % i](h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
+            h, edge_feat = self._modules["gcl_%d" % i](h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
             # This underscore corresponds to ignoring the output of the edge model from the GCLs!
         x = self._modules["gcl_equiv"](h, x, edge_index, coord_diff, edge_attr, node_mask, edge_mask)
+        # TODO: fit edge_feat into EquivariantUpdate forward
 
         # Important, the bias of the last linear might be non-zero
         if node_mask is not None:
@@ -179,8 +194,9 @@ class EGNN(nn.Module):
             edge_feat_nf = 2
 
         if using_bonds:
-            # TODO parametrize
-            edge_feat_nf += 5
+            # Treating in_edge_nf as either n_bond_orders, or None (if not using_bonds)
+            assert in_edge_nf is not None
+            edge_feat_nf += in_edge_nf
 
         self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)

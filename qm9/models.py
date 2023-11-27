@@ -54,6 +54,9 @@ def get_model(args, device, dataset_info, dataloader_train):
 def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=5):
     histogram = dataset_info['n_nodes']
     in_node_nf = len(dataset_info['atom_decoder']) + int(args.include_charges)
+    # TODO: Do we need to change this? should n_bond_orders be included in in_node_nf?
+    # Thinking no, since first pass idea should leave encoder unchanged
+
     nodes_dist = DistributionNodes(histogram)
 
     prop_dist = None
