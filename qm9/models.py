@@ -71,12 +71,12 @@ def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=
     
     encoder = EGNN_encoder_QM9(
         in_node_nf=in_node_nf, context_node_nf=args.context_node_nf, out_node_nf=args.latent_nf,
-        n_dims=3, device=device, hidden_nf=args.nf,
+        n_dims=3, n_bond_orders=n_bond_orders, device=device, hidden_nf=args.nf,
         act_fn=torch.nn.SiLU(), n_layers=1,
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method,
-        include_charges=args.include_charges, encode_bonds=args.include_bonds
+        include_charges=args.include_charges, using_bonds=args.include_bonds
         )
     
     decoder = EGNN_decoder_QM9(
@@ -86,7 +86,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method,
-        include_charges=args.include_charges
+        include_charges=args.include_charges, predict_bonds=args.include_bonds
         )
 
     vae = EnHierarchicalVAE(

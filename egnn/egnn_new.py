@@ -16,6 +16,8 @@ class GCL(nn.Module):
             act_fn,
             # nn.Linear(hidden_nf, hidden_nf),
             # TODO: make sure this change does not break anything! and makes sense!
+            # hopefully it should not matter in the bonds_in=bonds_out=False case
+            # since the edge model out is ignored??
             nn.Linear(hidden_nf, edges_in_d),
             act_fn)
 
@@ -28,6 +30,7 @@ class GCL(nn.Module):
             self.att_mlp = nn.Sequential(
                 # nn.Linear(hidden_nf, 1),
                 # Corresponding change here
+                # TODO: make sure this is only used in edge_model
                 nn.Linear(edges_in_d, 1),
                 nn.Sigmoid())
 
@@ -74,13 +77,13 @@ class GCL(nn.Module):
 
 class EquivariantUpdate(nn.Module):
     def __init__(self, hidden_nf, normalization_factor, aggregation_method,
-                 edges_in_d=1, edge_feat_d=1, act_fn=nn.SiLU(), tanh=False, coords_range=10.0):
+                 edges_in_d=1, act_fn=nn.SiLU(), tanh=False, coords_range=10.0):
         # TODO: Understand why edges_in_d=1 instead of 0. Should correspond
         # to the case when edge_attr is None but gets concatted in coord_model input_tensor?
         super(EquivariantUpdate, self).__init__()
         self.tanh = tanh
         self.coords_range = coords_range
-        input_edge = hidden_nf * 2 + edges_in_d + edge_feat_d
+        input_edge = hidden_nf * 2 + edges_in_d
         layer = nn.Linear(hidden_nf, 1, bias=False)
         torch.nn.init.xavier_uniform_(layer.weight, gain=0.001)
         self.coord_mlp = nn.Sequential(
@@ -92,10 +95,9 @@ class EquivariantUpdate(nn.Module):
         self.normalization_factor = normalization_factor
         self.aggregation_method = aggregation_method
 
-    def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_feat, edge_mask):
-        raise NotImplementedError("Get rid of edge_feat! replace it by passing edge features into edge_attr!")
+    def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_mask):
         row, col = edge_index
-        input_tensor = torch.cat([h[row], h[col], edge_attr, edge_feat], dim=1)
+        input_tensor = torch.cat([h[row], h[col], edge_attr], dim=1)
         if self.tanh:
             trans = coord_diff * torch.tanh(self.coord_mlp(input_tensor)) * self.coords_range
         else:
@@ -108,8 +110,8 @@ class EquivariantUpdate(nn.Module):
         coord = coord + agg
         return coord
 
-    def forward(self, h, coord, edge_index, coord_diff, edge_attr=None, edge_feat=None, node_mask=None, edge_mask=None):
-        coord = self.coord_model(h, coord, edge_index, coord_diff, edge_attr, edge_feat, edge_mask)
+    def forward(self, h, coord, edge_index, coord_diff, edge_attr=None, node_mask=None, edge_mask=None):
+        coord = self.coord_model(h, coord, edge_index, coord_diff, edge_attr, edge_mask)
         if node_mask is not None:
             coord = coord * node_mask
         return coord
@@ -118,7 +120,7 @@ class EquivariantUpdate(nn.Module):
 class EquivariantBlock(nn.Module):
     def __init__(self, hidden_nf, edge_feat_nf=2, device='cpu', act_fn=nn.SiLU(), n_layers=2, attention=True,
                  norm_diff=True, tanh=False, coords_range=15, norm_constant=1, sin_embedding=None,
-                 normalization_factor=100, aggregation_method='sum'):
+                 normalization_factor=100, aggregation_method='sum', bonds_in=False, bonds_out=False):
         super(EquivariantBlock, self).__init__()
         self.hidden_nf = hidden_nf
         self.device = device
@@ -129,16 +131,18 @@ class EquivariantBlock(nn.Module):
         self.sin_embedding = sin_embedding
         self.normalization_factor = normalization_factor
         self.aggregation_method = aggregation_method
+        # self.bonds_in = bonds_in # Is this one even necessary??
+        # TODO remove it if its not
+        self.bonds_out = bonds_out
 
         for i in range(0, n_layers):
             self.add_module("gcl_%d" % i, GCL(self.hidden_nf, self.hidden_nf, self.hidden_nf, edges_in_d=edge_feat_nf,
                                               act_fn=act_fn, attention=attention,
                                               normalization_factor=self.normalization_factor,
-                                              aggregation_method=self.aggregation_method))
+                                              aggregation_method=self.aggregation_method,
+                                              bonds_in=bonds_in, bonds_out=bonds_out))
         self.add_module("gcl_equiv", EquivariantUpdate(hidden_nf, edges_in_d=edge_feat_nf,
-                                                       edge_feat_d=self.hidden_nf, act_fn=nn.SiLU(), tanh=tanh,
-                                                       # TODO: make sure edge_feat_d = self.hidden_nf is correct
-                                                       # (it should be same as edge_feat dim!)
+                                                       act_fn=nn.SiLU(), tanh=tanh,
                                                        coords_range=self.coords_range_layer,
                                                        normalization_factor=self.normalization_factor,
                                                        aggregation_method=self.aggregation_method))
@@ -158,23 +162,43 @@ class EquivariantBlock(nn.Module):
             # Are you saying this runs after you included bonds in edge_attr? -- DW
 
         edge_attr = torch.cat([distances, edge_attr], dim=1)
-        edge_feat = None # TODO: Initialize with something better? edge_attr? need to modify feature dims if so
         for i in range(0, self.n_layers):
             h, edge_feat = self._modules["gcl_%d" % i](h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
-            # This underscore corresponds to ignoring the output of the edge model from the GCLs!
+            # TODO: is this edge_feat from the edge model really what we want
+            # for the decoder where we only start with x and h and want bonds out?
+            # maybe we need to feed x into the edge model instead of just h?
+            # or are the distances computed already within the block somewhere 
+            # and passed to the edge model?
+            # I'm thinking the shape might be wrong, since we should really be able
+            # to have an arbitrary hidden layer size for number of features per edge
+            # even though input is just distances for the decoder and output 
+            # needs to be n_bond_orders
+
+            # alternately, keep it as 1 + n_bond_orders (for distance plus bond type logits)
+            # at every hidden layer so that the model is effectively keeping track of how
+            # much it wants a bond (of each type) at every equivariant block
+
+            if self.bonds_out:
+                # use the output edge features from the edge model
+                # as the edge 
+                assert edge_feat.shape == edge_attr.shape
+                # TODO: In theory we'd want to be able to do this even if the assertion fails
+                edge_attr = edge_feat 
+
         x = self._modules["gcl_equiv"](h, x, edge_index, coord_diff, edge_attr, node_mask, edge_mask)
-        # TODO: fit edge_feat into EquivariantUpdate forward
+        # TODO: make sure edge_attr works here the way we want it to
 
         # Important, the bias of the last linear might be non-zero
         if node_mask is not None:
             h = h * node_mask
-        return h, x
+        return h, x, edge_attr
 
 
 class EGNN(nn.Module):
     def __init__(self, in_node_nf, in_edge_nf, hidden_nf, device='cpu', act_fn=nn.SiLU(), n_layers=3, attention=False,
                  norm_diff=True, out_node_nf=None, tanh=False, coords_range=15, norm_constant=1, inv_sublayers=2,
-                 sin_embedding=False, normalization_factor=100, aggregation_method='sum', using_bonds=False):
+                 sin_embedding=False, normalization_factor=100, aggregation_method='sum', 
+                 bonds_in=False, bonds_out=False):
         super(EGNN, self).__init__()
         if out_node_nf is None:
             out_node_nf = in_node_nf
@@ -193,8 +217,8 @@ class EGNN(nn.Module):
             self.sin_embedding = None
             edge_feat_nf = 2
 
-        if using_bonds:
-            # Treating in_edge_nf as either n_bond_orders, or None (if not using_bonds)
+        if bonds_in or bonds_out:
+            # Treating in_edge_nf as either n_bond_orders, or None (if not bonds_out)
             assert in_edge_nf is not None
             edge_feat_nf += in_edge_nf
 
@@ -207,7 +231,8 @@ class EGNN(nn.Module):
                                                                coords_range=coords_range, norm_constant=norm_constant,
                                                                sin_embedding=self.sin_embedding,
                                                                normalization_factor=self.normalization_factor,
-                                                               aggregation_method=self.aggregation_method))
+                                                               aggregation_method=self.aggregation_method,
+                                                               bonds_in=bonds_in, bonds_out=bonds_out))
         self.to(self.device)
 
     def forward(self, h, x, edge_index, node_mask=None, edge_mask=None, edge_attr=None):
@@ -228,13 +253,15 @@ class EGNN(nn.Module):
 
         h = self.embedding(h)
         for i in range(0, self.n_layers):
-            h, x = self._modules["e_block_%d" % i](h, x, edge_index, node_mask=node_mask, edge_mask=edge_mask, edge_attr=edge_attr)
+            h, x, edge_attr = self._modules["e_block_%d" % i](h, x, edge_index, node_mask=node_mask, edge_mask=edge_mask, edge_attr=edge_attr)
 
         # Important, the bias of the last linear might be non-zero
         h = self.embedding_out(h)
         if node_mask is not None:
             h = h * node_mask
-        return h, x
+
+        # TODO: need to mask edge_attr at all?
+        return h, x, edge_attr
 
 
 class GNN(nn.Module):
