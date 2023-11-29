@@ -159,6 +159,7 @@ class EGNN_encoder_QM9(nn.Module):
                 aggregation_method=aggregation_method, using_bonds=encode_bonds)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
+            print('WARNNING: Using GNN dynamics! (for the EGNN encoder QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, out_node_nf=hidden_nf + 3, 
                 in_edge_nf=0, hidden_nf=hidden_nf, device=device,
@@ -336,11 +337,11 @@ class QuadraticEstimator(nn.Module):
     
 class EGNN_decoder_QM9(nn.Module):
     def __init__(self, in_node_nf, context_node_nf, out_node_nf,
-                 n_dims, hidden_nf=64, device='cpu',
+                 n_dims, n_bond_orders, hidden_nf=64, device='cpu',
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
-                 include_charges=True, n_bond_orders=5, predict_bonds=True):
+                 include_charges=True, predict_bonds=True):
         super().__init__()
 
         include_charges = int(include_charges)
@@ -357,6 +358,7 @@ class EGNN_decoder_QM9(nn.Module):
                 aggregation_method=aggregation_method)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
+            print('WARNNING: Using GNN dynamics! (for the EGNN decoder QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, out_node_nf=out_node_nf + 3, 
                 in_edge_nf=0, hidden_nf=hidden_nf, device=device,

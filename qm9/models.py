@@ -51,7 +51,7 @@ def get_model(args, device, dataset_info, dataloader_train):
         raise ValueError(args.probabilistic_model)
 
 
-def get_autoencoder(args, device, dataset_info, dataloader_train):
+def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=5):
     histogram = dataset_info['n_nodes']
     in_node_nf = len(dataset_info['atom_decoder']) + int(args.include_charges)
     nodes_dist = DistributionNodes(histogram)
@@ -78,7 +78,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train):
     
     decoder = EGNN_decoder_QM9(
         in_node_nf=args.latent_nf, context_node_nf=args.context_node_nf, out_node_nf=in_node_nf,
-        n_dims=3, device=device, hidden_nf=args.nf,
+        n_dims=3, n_bond_orders=n_bond_orders, device=device, hidden_nf=args.nf,
         act_fn=torch.nn.SiLU(), n_layers=args.n_layers,
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
@@ -91,6 +91,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train):
         decoder=decoder,
         in_node_nf=in_node_nf,
         n_dims=3,
+        n_bond_orders=n_bond_orders,
         latent_node_nf=args.latent_nf,
         kl_weight=args.kl_weight,
         norm_values=args.normalize_factors,
