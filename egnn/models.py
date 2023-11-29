@@ -294,15 +294,18 @@ class QuadraticEstimator(nn.Module):
         super().__init__()
         self.latent_node_nf = latent_node_nf
         self.n_bond_orders = n_bond_orders
+
+        self.hidden_dim = 64
+
         self.A = torch.nn.Parameter(torch.randn(
-            (n_bond_orders, 1, latent_node_nf, latent_node_nf)
+            (n_bond_orders, 1, self.hidden_dim, self.hidden_dim)
         ))
 
         # mlp embedding of latents
         self.mlp = nn.Sequential(
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(latent_node_nf, self.hidden_dim),
             nn.SiLU(),
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.SiLU(),
         )
 
