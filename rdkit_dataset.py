@@ -46,6 +46,15 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     with open(summary_path, 'r') as f:
         summ = json.load(f)
 
+    # smiles map
+    path = os.path.join(base_path, 'smiles_map.json')
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            smiles_map = json.load(f)
+    else:
+        print("please run build_smiles_map.py first")
+        exit(-1)
+
     # filter valid pickle path
     smiles_list = []
     pickle_path_list = []
@@ -115,7 +124,7 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
 
         for conf_id in conf_ids:
             conf_meta = mol.get('conformers')[conf_id]
-            data = rdmol_to_data(conf_meta.get('rd_mol'), smiles=smiles)
+            data = rdmol_to_data(conf_meta.get('rd_mol'), smiles_map, smiles=smiles)
             labels = {
                 'totalenergy': conf_meta['totalenergy'],
                 'boltzmannweight': conf_meta['boltzmannweight'],
@@ -154,9 +163,6 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
         if stack:
             stacked_molecules = {}
             for key, val in molecules.items():
-                print("key", key, val[0].shape, val[1].shape)
-                # if key == "bonds":
-                #     continue
                 if val[0].dim() > 0:
                     stacked_molecules[key] = pad_sequence(val, batch_first=True)
                 else:
@@ -186,7 +192,7 @@ def bond_type_to_int(bond_type):
         exit(-1)
     return type_map[bond_type]
 
-def rdmol_to_data(mol:Mol, smiles=None):
+def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
     assert mol.GetNumConformers() == 1
     N = mol.GetNumAtoms()
 
@@ -208,7 +214,11 @@ def rdmol_to_data(mol:Mol, smiles=None):
 
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 
-    # print(data['one_hot'])
+    data['num_atoms'] = torch.tensor(N, dtype=torch.long)
+
+    if smiles is not None:
+        data['smiles'] = torch.tensor(smiles_map[smiles], dtype=torch.long)
+
     return data
 
 

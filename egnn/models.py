@@ -344,10 +344,15 @@ class EGNN_decoder_QM9(nn.Module):
         include_charges = int(include_charges)
         num_classes = out_node_nf - include_charges
 
+        self.final_mlp = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            act_fn,
+            nn.Linear(hidden_nf, out_node_nf))
+
         self.mode = mode
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
-                in_node_nf=in_node_nf + context_node_nf, out_node_nf=out_node_nf, 
+                in_node_nf=in_node_nf + context_node_nf, out_node_nf=hidden_nf, 
                 in_edge_nf=1, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
@@ -364,7 +369,7 @@ class EGNN_decoder_QM9(nn.Module):
 
         if predict_bonds:
             print("out_node_nf: ", out_node_nf)
-            self.bond_estimator = QuadraticEstimator(in_node_nf + n_dims, n_bond_orders)
+            self.bond_estimator = QuadraticEstimator(hidden_nf, n_bond_orders)
 
         self.num_classes = num_classes
         self.include_charges = include_charges
@@ -391,7 +396,6 @@ class EGNN_decoder_QM9(nn.Module):
         # self.decoder._forward(z_xh, node_mask, edge_mask, context)
         # in EnHeirarchicalVAE, and we are not modifying latent space (for now) -- DW
         bs, n_nodes, dims = xh.shape
-        bonds = self.bond_estimator(xh) if self.predict_bonds else None
 
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
@@ -411,13 +415,13 @@ class EGNN_decoder_QM9(nn.Module):
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
+            h_last, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
-        elif self.mode == 'gnn_dynamics':
-            xh = torch.cat([x, h], dim=1)
-            output = self.gnn(xh, edges, node_mask=node_mask)
-            vel = output[:, 0:3] * node_mask
-            h_final = output[:, 3:]
+        # elif self.mode == 'gnn_dynamics':
+        #     xh = torch.cat([x, h], dim=1)
+        #     output = self.gnn(xh, edges, node_mask=node_mask)
+        #     vel = output[:, 0:3] * node_mask
+        #     h_final = output[:, 3:]
         else:
             raise Exception("Wrong mode %s" % self.mode)
 
@@ -432,6 +436,9 @@ class EGNN_decoder_QM9(nn.Module):
         else:
             vel = remove_mean_with_mask(vel, node_mask.view(bs, n_nodes, 1))
 
+        bonds = self.bond_estimator(h_last.view(bs, n_nodes, -1)) if self.predict_bonds else None
+
+        h_final = self.final_mlp(h_last)
         if node_mask is not None:
             h_final = h_final * node_mask
         h_final = h_final.view(bs, n_nodes, -1)
