@@ -4,6 +4,7 @@ import os
 import random
 
 import torch
+from bond_helpers import get_one_hot_bonds, octet_rule_violations
 from qm9 import dataset
 
 class Args:
@@ -74,6 +75,10 @@ for i, batch in enumerate(rdkit_loader):
                 atom_type2 = batch['charges'][i][atom2].item()
                 assert atom_type1 != 1 and atom_type2 != 1
                 assert atom_type1 != 9 and atom_type2 != 9
+
+        # check octet rule
+        adj = get_one_hot_bonds(batch['bonds'][i].unsqueeze(0), num_atoms, 5)
+        octet_rule_violations(adj, batch['charges'][i][:num_atoms].unsqueeze(0))
 
 print(f"Loaded {rdkit_mols} molecules")
 

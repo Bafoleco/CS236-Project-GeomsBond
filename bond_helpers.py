@@ -11,6 +11,7 @@ def get_one_hot_bonds(bonds, n_nodes, n_bond_orders):
 
     batch_indices = torch.arange(batch_size, device=bonds.device).view(-1, 1).expand(-1, max_batch_num_edges)
     adj[batch_indices, source_nodes, dest_nodes] = bond_types
+    adj[batch_indices, dest_nodes, source_nodes] = bond_types
 
     one_hot_adj = torch.nn.functional.one_hot(adj, num_classes=n_bond_orders)
     return one_hot_adj
@@ -48,6 +49,44 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
 
     return incorrect_bond_predictions.sum() / edge_mask.sum()
 
+def octet_rule_violations(bond_rec, charges):
+    predicted_bonds = bond_rec.argmax(dim=-1)
+    # print("predicted bonds: ", predicted_bonds[0])
+
+    predicted_bonds[predicted_bonds == 4] = 1.5
+    predicted_bonds = predicted_bonds.sum(dim=-1).unsqueeze(-1)
+
+    # print("predicted bonds: ", predicted_bonds)
+    # print("charges: ", charges)
+
+    hydrogens = (charges == 1)
+    carbons = (charges == 6)
+    nitrogens = (charges == 7)
+    oxygens = (charges == 8)
+    fluorines = (charges == 9)
+
+    correct_h = (predicted_bonds[hydrogens] == 1).sum()
+    correct_c = (predicted_bonds[carbons] == 4).sum()
+    correct_n = (predicted_bonds[nitrogens] == 3).sum()
+    correct_o = (predicted_bonds[oxygens] == 2).sum()
+    correct_f = (predicted_bonds[fluorines] == 1).sum()
+
+    total_h = hydrogens.sum()
+    total_c = carbons.sum()
+    total_n = nitrogens.sum()
+    total_o = oxygens.sum()
+    total_f = fluorines.sum()
+
+    print("hydrogen octet rule accuracy: ", correct_h / total_h)
+    print("carbon octet rule accuracy: ", correct_c / total_c)
+    print("nitrogen octet rule accuracy: ", correct_n / total_n)
+    print("oxygen octet rule accuracy: ", correct_o / total_o)
+    print("fluorine octet rule accuracy: ", correct_f / total_f)
+
+    total_correct = correct_h + correct_c + correct_n + correct_o + correct_f
+    total = total_h + total_c + total_n + total_o + total_f
+
+    print("total octet rule accuracy: ", total_correct / total)
 
 
 def check_adj_bonds(adj, bonds):

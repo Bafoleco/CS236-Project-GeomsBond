@@ -9,6 +9,8 @@ from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
+from bond_helpers import get_one_hot_bonds, octet_rule_violations
+
 def get_rdkit_datafiles(dataset):
     base_path = "./data/rdkit_folder/"
     if dataset == 'qm9':
@@ -202,15 +204,28 @@ def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
 
     data = {}
 
-    # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+    print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+    print("molecule num fragments: ", len(rdkit.Chem.rdmolops.GetMolFrags(mol, asMols=True)))
 
-    # for bond in mol.GetBonds():
-    #     print(bond.GetBondType())
+    bonded_set = set()
+    for bond in mol.GetBonds():
+        print("bond from ", bond.GetBeginAtom().GetSymbol(), " to ", bond.GetEndAtom().GetSymbol())
+        bonded_set.add(bond.GetBeginAtomIdx())
+        bonded_set.add(bond.GetEndAtomIdx())
+
+    print("bonded set: ", len(bonded_set))
 
     data['positions'] = pos
     data['charges'] = torch.tensor([charge_dict[atom.GetSymbol()] for atom in mol.GetAtoms()])
+    # probably small optimizatio to not store duplicate bonds
     data['bonds'] = torch.tensor([(bond_type_to_int(bond.GetBondType()), bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()) 
               for bond in mol.GetBonds()])
+
+    # print("bonds: ", data['bonds'])
+    adj = get_one_hot_bonds(data['bonds'].unsqueeze(0), mol.GetNumAtoms(), 5)
+    # print("adj: ", adj.shape)
+    # print("adj bond count: ", adj[:, :, :, 1:].sum())
+    octet_rule_violations(adj, data['charges'].unsqueeze(0))
 
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 

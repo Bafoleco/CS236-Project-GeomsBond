@@ -5,7 +5,7 @@ import torch
 from egnn import models
 from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
-from bond_helpers import bond_accuracy, get_bond_edge_attr, get_one_hot_bonds, check_one_hot_bonds
+from bond_helpers import bond_accuracy, get_bond_edge_attr, get_one_hot_bonds, check_one_hot_bonds, octet_rule_violations
 
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
@@ -934,6 +934,9 @@ class EnHierarchicalVAE(torch.nn.Module):
             # print(bonds_rec.shape)
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
             print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
+
+            octet_rule_violations(bonds_rec, torch.round(h_int_rec))
+            # print("h int rec", h_int_rec)
 
             n_edges = n_nodes * n_nodes 
 

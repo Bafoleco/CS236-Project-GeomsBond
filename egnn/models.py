@@ -290,9 +290,9 @@ class EGNN_encoder_QM9(nn.Module):
 
 
 class QuadraticEstimator(nn.Module):
-    def __init__(self, latent_node_nf, n_bond_orders):
+    def __init__(self, input_dim, n_bond_orders):
         super().__init__()
-        self.latent_node_nf = latent_node_nf
+        self.input_dim = input_dim
         self.n_bond_orders = n_bond_orders
 
         self.hidden_dim = 64
@@ -303,18 +303,18 @@ class QuadraticEstimator(nn.Module):
 
         # mlp embedding of latents
         self.mlp = nn.Sequential(
-            nn.Linear(latent_node_nf, self.hidden_dim),
+            nn.Linear(input_dim, self.hidden_dim),
             nn.SiLU(),
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.SiLU(),
         )
 
     def forward(self, z_xh):
-        bs,n_nodes,latent_node_nf = z_xh.shape
+        bs, n_nodes, latent_node_nf = z_xh.shape
 
         # shoot, I may have been wrong about how promising this was
         # it seems pretty weird to treat x and h the same way
-        assert latent_node_nf == self.latent_node_nf
+        assert latent_node_nf == self.input_dim
 
         # TODO There should be a better way to do this that saves 
         # half the parameters... something with torch.triu?
