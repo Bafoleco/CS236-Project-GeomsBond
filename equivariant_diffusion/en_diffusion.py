@@ -930,13 +930,14 @@ class EnHierarchicalVAE(torch.nn.Module):
             # and itself? (and don't double-count that way either but I think that's 
             # less of an issue.)
             # bs,n_edges,n_bond_orders = bonds_tensor.shape
+            
             # print(bonds_tensor.shape)
             # print(bonds_rec.shape)
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
 
             # print("bonds rec: ", bonds_rec.shape)
             # print("bonds tensor: ", bonds_tensor.shape)
-            # print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
+            print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
 
             n_edges = n_nodes * n_nodes 
 

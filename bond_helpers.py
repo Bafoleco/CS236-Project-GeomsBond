@@ -11,6 +11,7 @@ def get_one_hot_bonds(bonds, n_nodes, n_bond_orders):
 
     batch_indices = torch.arange(batch_size, device=bonds.device).view(-1, 1).expand(-1, max_batch_num_edges)
     adj[batch_indices, source_nodes, dest_nodes] = bond_types
+    adj[batch_indices, dest_nodes, source_nodes] = bond_types
 
     one_hot_adj = torch.nn.functional.one_hot(adj, num_classes=n_bond_orders)
     return one_hot_adj
