@@ -5,11 +5,11 @@ import random
 from tqdm import tqdm
 import pickle
 import rdkit
-from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
+from rdkit.Chem.rdchem import Mol
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-from bond_helpers import get_one_hot_bonds, octet_rule_violations
+from bond_helpers import get_one_hot_bonds, get_molecular_stability, type_map, inv_type_map
 
 def get_rdkit_datafiles(dataset):
     base_path = "./data/rdkit_folder/"
@@ -188,7 +188,6 @@ charge_dict = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'F': 9}
 all_species = torch.tensor([0, 1, 6, 7, 8, 9])
 
 def bond_type_to_int(bond_type):
-    type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
     if bond_type not in type_map:
         print("uknown bond type: " + bond_type)
         exit(-1)
@@ -225,7 +224,7 @@ def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
     adj = get_one_hot_bonds(data['bonds'].unsqueeze(0), mol.GetNumAtoms(), 5)
     # print("adj: ", adj.shape)
     # print("adj bond count: ", adj[:, :, :, 1:].sum())
-    octet_rule_violations(adj, data['charges'].unsqueeze(0))
+    get_molecular_stability(adj, data['charges'].unsqueeze(0))
 
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 

@@ -1,4 +1,29 @@
+import time
 import torch
+from rdkit import Chem
+from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
+
+type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
+inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
+
+def get_mol(adj, charges, n_atoms):
+    adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
+    charges = charges[:n_atoms]
+
+    mol = Chem.RWMol()
+    for i in range(n_atoms):
+        mol.AddAtom(Chem.Atom(int(charges[i])))
+
+    for i in range(n_atoms):
+        for j in range(n_atoms):
+            if adj[i, j] == 0:
+                continue
+            bond_type = int(adj[i, j])
+            if bond_type != 0 and i < j:
+                mol.AddBond(i, j, Chem.BondType(inv_type_map[bond_type]))
+
+    mol.UpdatePropertyCache(strict=False)
+    return mol
 
 def get_one_hot_bonds(bonds, n_nodes, n_bond_orders):
     batch_size, max_batch_num_edges, _ = bonds.shape
@@ -49,8 +74,76 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
 
     return incorrect_bond_predictions.sum() / edge_mask.sum()
 
-def octet_rule_violations(bond_rec, charges):
-    predicted_bonds = bond_rec.argmax(dim=-1)
+def get_molecular_stability(bond_rec, charges):
+    start = time.time()
+    batch_size, _, _, _ = bond_rec.shape
+
+    octet_rule_violations = 0
+    for i in range(batch_size):
+        # index of last non-zero element
+        n_atoms = (charges[i] != 0).sum()
+
+        mol = get_mol(bond_rec[i], charges[i], n_atoms)
+
+        if len(Chem.GetMolFrags(mol)) > 1:
+            octet_rule_violations += 1
+            continue
+
+        for atom in mol.GetAtoms():
+            # print("type: ", atom.GetSymbol())
+            # print("valence: ", atom.GetExplicitValence())
+            if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
+                octet_rule_violations += 1
+                break
+            if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
+                octet_rule_violations += 1
+                break
+            if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
+                octet_rule_violations += 1
+                break
+            if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
+                octet_rule_violations += 1
+                break
+            if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
+                octet_rule_violations += 1
+                break
+
+            # doesn't work for some reason
+            # if atom.GetFormalCharge() != 0:
+            #     octet_rule_violations += 1
+            #     break
+
+    end = time.time()
+    # print("octet rule violations time: ", end - start)
+    return (batch_size - octet_rule_violations) / batch_size
+
+def valid_fraction(bond_rec, charges):
+    start = time.time()
+    batch_size, n_nodes, n_nodes, _ = bond_rec.shape
+
+    octet_rule_violations = 0
+    for i in range(batch_size):
+        # index of last non-zero element
+        n_atoms = (charges[i] != 0).sum()
+
+        mol = get_mol(bond_rec[i], charges[i], n_atoms)
+
+        if len(Chem.GetMolFrags(mol)) > 1:
+            octet_rule_violations += 1
+            continue
+
+        try:
+            Chem.SanitizeMol(mol)
+        except ValueError:  
+            print("octet rule violation")
+            octet_rule_violations += 1
+
+    end = time.time()
+    print("octet rule violations time: ", end - start)
+    return (batch_size - octet_rule_violations) / batch_size
+
+def octet_rule_violations_old(bond_rec, charges):
+    predicted_bonds = bond_rec.argmax(dim=-1).float()
     # print("predicted bonds: ", predicted_bonds[0])
 
     predicted_bonds[predicted_bonds == 4] = 1.5
@@ -87,6 +180,8 @@ def octet_rule_violations(bond_rec, charges):
     total = total_h + total_c + total_n + total_o + total_f
 
     print("total octet rule accuracy: ", total_correct / total)
+
+    return total_correct / total
 
 
 def check_adj_bonds(adj, bonds):

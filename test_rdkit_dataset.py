@@ -4,7 +4,7 @@ import os
 import random
 
 import torch
-from bond_helpers import get_one_hot_bonds, octet_rule_violations
+from bond_helpers import get_one_hot_bonds, get_molecular_stability
 from qm9 import dataset
 
 class Args:
@@ -56,6 +56,7 @@ smiles_to_data = defaultdict(lambda: {})
 
 print("about to load rdkit data")
 rdkit_mols = 0
+problematic_valence = 0
 for i, batch in enumerate(rdkit_loader):
     for i, smiles in enumerate(batch['smiles']):
         smiles_to_data[str(smiles.item())]["rdkit"] = {key: batch[key][i] for key in batch.keys()}
@@ -78,9 +79,25 @@ for i, batch in enumerate(rdkit_loader):
 
         # check octet rule
         adj = get_one_hot_bonds(batch['bonds'][i].unsqueeze(0), num_atoms, 5)
-        octet_rule_violations(adj, batch['charges'][i][:num_atoms].unsqueeze(0))
+        acc = get_molecular_stability(adj, batch['charges'][i][:num_atoms].unsqueeze(0))
+        smiles_str = inverse_smiles_map[str(smiles.item())]
+        # print("acc: ", acc)
+        if acc != 1:
+            problematic_valence += 1
+        #     print("octet rule violations: ", acc)
+        #     print("smiles: ", smiles)
+        #     adj = adj.argmax(dim=-1).float()
+        #     adj[adj == 4] = 1.5
+        #     torch.set_printoptions(precision=1)
+        #     print("adj: ", adj[:num_atoms, :num_atoms])
+        #     adj = adj.sum(dim=-1).unsqueeze(-1)
+        #     torch.set_printoptions(precision=4)
+        #     print("adj: ", adj)
+        #     print("charges: ", batch['charges'][i][:num_atoms].unsqueeze(0))
 
 print(f"Loaded {rdkit_mols} molecules")
+
+print(f"Problematic valence: {problematic_valence}")
 
 original_mols = 0
 print("about to load original data")

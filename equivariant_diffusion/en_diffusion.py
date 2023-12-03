@@ -1,3 +1,4 @@
+import random
 from equivariant_diffusion import utils
 import numpy as np
 import math
@@ -5,7 +6,7 @@ import torch
 from egnn import models
 from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
-from bond_helpers import bond_accuracy, get_bond_edge_attr, get_one_hot_bonds, check_one_hot_bonds, octet_rule_violations
+from bond_helpers import bond_accuracy, get_bond_edge_attr, get_molecular_stability, get_one_hot_bonds, check_one_hot_bonds
 
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
@@ -935,12 +936,15 @@ class EnHierarchicalVAE(torch.nn.Module):
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
             print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
 
-            octet_rule_violations(bonds_rec, torch.round(h_int_rec))
+            if random.random() < 0.1:
+                mol_stability = get_molecular_stability(bonds_rec, torch.round(h_int_rec))
+                print("molecular stability: ", mol_stability)
+
             # print("h int rec", h_int_rec)
 
             n_edges = n_nodes * n_nodes 
 
-            print("bonds rec: ", bonds_rec.shape)
+            # print("bonds rec: ", bonds_rec.shape)
             # print("bonds tensor: ", bonds_tensor.shape)
 
             assert bonds_tensor.shape == bonds_rec.shape
