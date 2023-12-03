@@ -933,12 +933,12 @@ class EnHierarchicalVAE(torch.nn.Module):
             # print(bonds_tensor.shape)
             # print(bonds_rec.shape)
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
-            print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
+
+            # print("bonds rec: ", bonds_rec.shape)
+            # print("bonds tensor: ", bonds_tensor.shape)
+            # print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
 
             n_edges = n_nodes * n_nodes 
-
-            print("bonds rec: ", bonds_rec.shape)
-            # print("bonds tensor: ", bonds_tensor.shape)
 
             assert bonds_tensor.shape == bonds_rec.shape
             bonds_rec = bonds_rec.reshape(bs * n_edges, self.n_bond_orders)
@@ -1006,6 +1006,7 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         # Decoder output (reconstruction).
         x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
+        # print("x,h,bonds recon shape:",x_recon.shape, h_recon.shape, bonds_rec.shape)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
         loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask)
 
@@ -1021,7 +1022,6 @@ class EnHierarchicalVAE(torch.nn.Module):
         """
         Computes the ELBO if training. And if eval then always computes NLL.
         """
-
         loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context)
 
         neg_log_pxh = loss
@@ -1052,7 +1052,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         if self.include_bonds:
             # bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders)
             bond_edge_attr = get_bond_edge_attr(bonds, xh.shape[1], self.n_bond_orders)
-            print()
+            # print()
         else:
             bond_edge_attr = None
 

@@ -52,6 +52,7 @@ def get_model(args, device, dataset_info, dataloader_train):
 
 
 def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=5):
+    # print('\n\n\n-------------------INITIALIZING AUTOENCODER-------------------\n\n\n')
     histogram = dataset_info['n_nodes']
     in_node_nf = len(dataset_info['atom_decoder']) + int(args.include_charges)
     # TODO: Do we need to change this? should n_bond_orders be included in in_node_nf?

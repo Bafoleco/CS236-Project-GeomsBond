@@ -23,7 +23,7 @@ class EGNN_dynamics_QM9(nn.Module):
                 aggregation_method=aggregation_method)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
-            print('WARNNING: Using GNN dynamics! (for the EGNN dynamics QM9)')
+            print('WARNING: Using GNN dynamics! (for the EGNN dynamics QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, in_edge_nf=0,
                 hidden_nf=hidden_nf, out_node_nf=3 + in_node_nf, device=device,
@@ -153,14 +153,16 @@ class EGNN_encoder_QM9(nn.Module):
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=hidden_nf, 
-                in_edge_nf=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                n_bond_orders=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method, using_bonds=using_bonds)
+                aggregation_method=aggregation_method, 
+                bonds_in=using_bonds, bonds_out=False)
+                # TODO: Change bonds_out if we add bonds to the diffusion model
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
-            print('WARNNING: Using GNN dynamics! (for the EGNN encoder QM9)')
+            print('WARNING: Using GNN dynamics! (for the EGNN encoder QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, out_node_nf=hidden_nf + 3, 
                 in_edge_nf=0, hidden_nf=hidden_nf, device=device,
@@ -214,9 +216,7 @@ class EGNN_encoder_QM9(nn.Module):
 
         if self.mode == 'egnn_dynamics':
             # we want to use our bonds as edge attrs
-            h_final, x_final, _ = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, edge_attr=bonds_edge_attr)
-            # Underscore here to ignore the bond predictions (aka edge_attrs,
-            # since we are not modifying the latent space to include these (...yet?))
+            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, bonds=bonds_edge_attr)
             
             vel = x_final * node_mask  # This masking operation is redundant but just in case
         elif self.mode == 'gnn_dynamics':
@@ -352,11 +352,13 @@ class EGNN_decoder_QM9(nn.Module):
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=out_node_nf, 
-                in_edge_nf=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                n_bond_orders=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method, using_bonds=predict_bonds)
+                aggregation_method=aggregation_method, 
+                bonds_in=False, bonds_out=predict_bonds)
+                # TODO: Change bonds_in if we add bonds to the diffusion model
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
             print('WARNNING: Using GNN dynamics! (for the EGNN decoder QM9)')
@@ -418,13 +420,8 @@ class EGNN_decoder_QM9(nn.Module):
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
-            h_final, x_final, edges_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
+            h_final, x_final, bonds = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
-            bonds = torch.softmax(edges_final[:,-self.n_bond_orders:],1) 
-            # some softmax like this here on edges_final? need to check dims,
-            # potentially slice off the beginning of one dimension depending on 
-            # the shape. Or just make sure that the output shape of edges_final
-            # is exactly n_bond_orders? 
         elif self.mode == 'gnn_dynamics':
             xh = torch.cat([x, h], dim=1)
             output = self.gnn(xh, edges, node_mask=node_mask)
@@ -434,6 +431,7 @@ class EGNN_decoder_QM9(nn.Module):
             raise Exception("Wrong mode %s" % self.mode)
 
         vel = vel.view(bs, n_nodes, -1)
+        bonds = bonds.view(bs, n_nodes, n_nodes, -1)
 
         if torch.any(torch.isnan(vel)):
             print('Warning: detected nan, resetting EGNN output to zero.')
@@ -448,7 +446,9 @@ class EGNN_decoder_QM9(nn.Module):
             h_final = h_final * node_mask
         h_final = h_final.view(bs, n_nodes, -1)
 
-        return vel, h_final, bonds 
+        if self.predict_bonds:
+            return vel, h_final, bonds 
+        return vel, h_final
     
     def get_adj_matrix(self, n_nodes, batch_size, device):
         if n_nodes in self._edges_dict:
