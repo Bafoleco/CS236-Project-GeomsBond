@@ -164,7 +164,7 @@ class EquivariantBlock(nn.Module):
             nn.Linear(1 + 2 * gcl_input_nf + self.hidden_nf, hidden_nf),
             act_fn,
             nn.Linear(hidden_nf, hidden_nf),
-            act_fn,
+            # act_fn,
             # nn.Linear(hidden_nf, n_bond_orders),
             # nn.Softmax(dim=-1)
         ) # TODO: A way to make this the same across all EquivBlocks? init it higher up and pass it around?
@@ -268,6 +268,15 @@ class EGNN(nn.Module):
                                                                normalization_factor=self.normalization_factor,
                                                                aggregation_method=self.aggregation_method,
                                                                bonds_in=bonds_in, bonds_out=bonds_out))
+        self.bond_mlp = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            act_fn,
+            nn.Linear(hidden_nf, hidden_nf),
+            act_fn,
+            nn.Linear(hidden_nf, n_bond_orders),
+            # nn.Softmax(dim=-1)
+        )
+
         self.to(self.device)
 
     def forward(self, h, x, edge_index, node_mask=None, edge_mask=None, bonds=None):
@@ -293,6 +302,8 @@ class EGNN(nn.Module):
         h = self.embedding_out(h)
         if node_mask is not None:
             h = h * node_mask
+
+        bonds = self.bond_mlp(bonds)
 
         # print('EGNN forward returns bonds with shape', bonds.shape)
         if self.bonds_out:
