@@ -1,4 +1,6 @@
 import random
+
+import wandb
 from equivariant_diffusion import utils
 import numpy as np
 import math
@@ -939,6 +941,7 @@ class EnHierarchicalVAE(torch.nn.Module):
             if random.random() < 0.1:
                 mol_stability = get_molecular_stability(bonds_rec, torch.round(h_int_rec))
                 print("molecular stability: ", mol_stability)
+                wandb.log({"train_molecular stability": mol_stability})
 
             # print("h int rec", h_int_rec)
 
