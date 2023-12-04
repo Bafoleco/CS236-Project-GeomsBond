@@ -1027,7 +1027,7 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         return loss, {'loss_t': loss.squeeze(), 'rec_error': loss_recon.squeeze()}
 
-    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition="train"):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition="Train"):
         """
         Computes the ELBO if training. And if eval then always computes NLL.
         """
