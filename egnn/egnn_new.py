@@ -258,8 +258,9 @@ class EGNN(nn.Module):
         self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)
         for i in range(0, n_layers):
+            bond_nf = n_bond_orders if i == 0 else hidden_nf
             self.add_module("e_block_%d" % i, EquivariantBlock(hidden_nf, edge_in_nf=edge_feat_nf, 
-                                                               n_bond_orders=n_bond_orders, device=device,
+                                                               n_bond_orders=bond_nf, device=device,
                                                                act_fn=act_fn, n_layers=inv_sublayers,
                                                                attention=attention, norm_diff=norm_diff, tanh=tanh,
                                                                coords_range=coords_range, norm_constant=norm_constant,
