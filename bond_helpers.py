@@ -9,6 +9,20 @@ inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: B
 def get_mol(adj, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
     charges = charges[:n_atoms]
+    if charges.min() < 0 or charges.max() > 9:
+        return None
+    
+    if charges[charges == 2].sum() > 0:
+        return None
+    
+    if charges[charges == 3].sum() > 0:
+        return None
+    
+    if charges[charges == 4].sum() > 0:
+        return None
+    
+    if charges[charges == 5].sum() > 0:
+        return None
 
     mol = Chem.RWMol()
     for i in range(n_atoms):
@@ -84,6 +98,10 @@ def get_molecular_stability(bond_rec, charges):
         n_atoms = (charges[i] != 0).sum()
 
         mol = get_mol(bond_rec[i], charges[i], n_atoms)
+
+        if mol is None:
+            octet_rule_violations += 1
+            continue
 
         if len(Chem.GetMolFrags(mol)) > 1:
             octet_rule_violations += 1

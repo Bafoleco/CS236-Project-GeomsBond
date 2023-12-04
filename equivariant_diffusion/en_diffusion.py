@@ -941,7 +941,7 @@ class EnHierarchicalVAE(torch.nn.Module):
                 print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
                 mol_stability = get_molecular_stability(bonds_rec, torch.round(h_int_rec))
                 print("molecular stability: ", mol_stability)
-                wandb.log({"Val molecular stability": mol_stability}, commit=True)
+                wandb.log({"Val molecular stability": mol_stability}, commit=False)
 
             # print("h int rec", h_int_rec)
 
