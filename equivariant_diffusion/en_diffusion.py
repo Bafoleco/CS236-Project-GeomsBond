@@ -1194,7 +1194,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
 
         return log_p_xh_given_z
     
-    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition=None):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """
