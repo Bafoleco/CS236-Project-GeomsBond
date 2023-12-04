@@ -941,7 +941,7 @@ class EnHierarchicalVAE(torch.nn.Module):
                 print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
                 mol_stability = get_molecular_stability(bonds_rec, torch.round(h_int_rec))
                 print("molecular stability: ", mol_stability)
-                wandb.log({"Val molecular stability": mol_stability})
+                wandb.log({"Val molecular stability": mol_stability}, commit=True)
 
             # print("h int rec", h_int_rec)
 
@@ -970,7 +970,7 @@ class EnHierarchicalVAE(torch.nn.Module):
                 error_bonds = error_bonds / (n_edges * self.n_bond_orders)
         
         print("error bonds: ", error_bonds.mean())
-        return error + 100 * error_bonds
+        return error + 20 * error_bonds
     
     def sample_normal(self, mu, sigma, node_mask, fix_noise=False):
         """Samples from a Normal distribution."""
