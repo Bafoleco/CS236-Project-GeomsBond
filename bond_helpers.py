@@ -8,7 +8,7 @@ inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: B
 
 def get_mol(adj, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
-    if charges.min() < 0 or charges.max() > 9:
+    if charges.min() < 1 or charges.max() > 9:
         return None
     
     if charges[charges == 2].sum() > 0:
