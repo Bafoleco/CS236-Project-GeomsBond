@@ -1260,7 +1260,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
 
         z_xh = torch.cat([z_x, z_h['categorical'], z_h['integer']], dim=2)
         diffusion_utils.assert_correctly_masked(z_xh, node_mask)
-        x, h = self.vae.decode(z_xh, node_mask, edge_mask, context)
+        x, h, bonds = self.vae.decode(z_xh, node_mask, edge_mask, context)
 
         return x, h
     
