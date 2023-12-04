@@ -34,7 +34,7 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     dataset_name = "qm9"
     conf_per_mol = 1
     train_size = 0.8
-    tot_mol_size = 30000
+    tot_mol_size = 130000
 
     # set random seed
     if seed is None:
@@ -203,16 +203,16 @@ def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
 
     data = {}
 
-    print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
-    print("molecule num fragments: ", len(rdkit.Chem.rdmolops.GetMolFrags(mol, asMols=True)))
+    # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+    # print("molecule num fragments: ", len(rdkit.Chem.rdmolops.GetMolFrags(mol, asMols=True)))
 
-    bonded_set = set()
-    for bond in mol.GetBonds():
-        print("bond from ", bond.GetBeginAtom().GetSymbol(), " to ", bond.GetEndAtom().GetSymbol())
-        bonded_set.add(bond.GetBeginAtomIdx())
-        bonded_set.add(bond.GetEndAtomIdx())
+    # bonded_set = set()
+    # for bond in mol.GetBonds():
+    #     print("bond from ", bond.GetBeginAtom().GetSymbol(), " to ", bond.GetEndAtom().GetSymbol())
+    #     bonded_set.add(bond.GetBeginAtomIdx())
+    #     bonded_set.add(bond.GetEndAtomIdx())
 
-    print("bonded set: ", len(bonded_set))
+    # print("bonded set: ", len(bonded_set))
 
     data['positions'] = pos
     data['charges'] = torch.tensor([charge_dict[atom.GetSymbol()] for atom in mol.GetAtoms()])
@@ -221,10 +221,10 @@ def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
               for bond in mol.GetBonds()])
 
     # print("bonds: ", data['bonds'])
-    adj = get_one_hot_bonds(data['bonds'].unsqueeze(0), mol.GetNumAtoms(), 5)
+    # adj = get_one_hot_bonds(data['bonds'].unsqueeze(0), mol.GetNumAtoms(), 5)
     # print("adj: ", adj.shape)
     # print("adj bond count: ", adj[:, :, :, 1:].sum())
-    get_molecular_stability(adj, data['charges'].unsqueeze(0))
+    # get_molecular_stability(adj, data['charges'].unsqueeze(0))
 
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 

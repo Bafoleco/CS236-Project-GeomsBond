@@ -152,7 +152,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
 
             # transform batch through flow
             nll, _, _ = losses.compute_loss_and_nll(args, eval_model, nodes_dist, x, h,
-                                                    bonds, node_mask, edge_mask, context)
+                                                    bonds, node_mask, edge_mask, context, partition=partition)
             # standard nll from forward KL
 
             nll_epoch += nll.item() * batch_size
