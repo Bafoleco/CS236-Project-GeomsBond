@@ -83,6 +83,7 @@ for i, batch in enumerate(rdkit_loader):
         smiles_str = inverse_smiles_map[str(smiles.item())]
         # print("acc: ", acc)
         if acc != 1:
+            print("bad smiles: ", smiles_str)
             problematic_valence += 1
         #     print("octet rule violations: ", acc)
         #     print("smiles: ", smiles)
