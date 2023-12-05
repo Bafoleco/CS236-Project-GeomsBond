@@ -3,7 +3,7 @@ import os
 import pickle
 
 from tqdm import tqdm
-from bond_helpers import is_mol_stable
+from bond_helpers import get_atomic_stability, is_mol_stable
 from qm9.rdkit_functions import mol2smiles
 from rdkit import Chem
 from qm9.rdkit_functions import mol2smiles
@@ -124,5 +124,8 @@ class BasicMolBasedMetrics(object):
         # new eval
         stable, stability = self.compute_molecular_stability(generated)
         print(f"Stability over {len(generated)} molecules: {stability * 100 :.2f}%")
+
+        atomic_stability = get_atomic_stability(generated)
+        print(f"Atomic stability: {atomic_stability * 100 :.2f}%")
 
         return [validity, uniqueness, novelty, stability], unique
