@@ -138,7 +138,8 @@ def get_atomic_stability(mols):
         for atom in mol.GetAtoms():
             if check_atom(atom):
                 n_stable += 1
-
+    if n_atoms == 0:
+        return 0
     return n_stable / n_atoms
 
 # akin to their notion of molecular stability
