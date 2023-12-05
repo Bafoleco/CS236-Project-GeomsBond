@@ -1,6 +1,8 @@
 import json
 import os
 import pickle
+
+import tqdm
 from bond_helpers import is_mol_stable
 from configs.datasets_config import get_dataset_info
 from qm9 import dataset
@@ -11,41 +13,33 @@ from qm9.rdkit_functions import mol2smiles
 def get_qm9_smiles(dataset_name):
     print("\Getting QM9 SMILES ...")
 
-    remove_h = False
-    class StaticArgs:
-        def __init__(self, dataset, remove_h):
-            self.dataset = dataset
-            self.batch_size = 1
-            self.num_workers = 1
-            self.filter_n_atoms = None
-            self.datadir = 'qm9/temp'
-            self.remove_h = remove_h
-            self.include_charges = True
-            self.rdkit = True
-    args_dataset = StaticArgs(dataset_name, remove_h)
-    dataloaders, charge_scale = dataset.retrieve_dataloaders(args_dataset)
-    dataset_info = get_dataset_info(args_dataset.dataset, args_dataset.remove_h)
-    n_types = 4 if remove_h else 5
-    mols_smiles = []
-
-    # smiles map
     base_path = "./data/rdkit_folder/"
-    path = os.path.join(base_path, 'inv_smiles_map.json')
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            inv_smiles_map = json.load(f)
-    else:
-        print("please run build_smiles_map.py first")
-        exit(-1)
+    dataset_name = "qm9"
+    conf_per_mol = 1
 
-    for i, data in enumerate(dataloaders['train']):
-        smiles_id = data['smiles'][0].item()
-        mols_smiles.append(inv_smiles_map[str(smiles_id)])
+    # read summary file
+    assert dataset_name in ['qm9', 'drugs']
+    summary_path = os.path.join(base_path, 'summary_%s.json' % dataset_name)
+    with open(summary_path, 'r') as f:
+        summ = json.load(f)
 
-        if i % 1000 == 0:
-            print("\tConverting QM9 dataset to SMILES {0:.2%}".format(float(i)/len(dataloaders['train'])))
-    return mols_smiles
+    rdkit_mol_smiles = []
 
+    for _, meta_mol in tqdm(summ.items()):
+        u_conf = meta_mol.get('uniqueconfs')
+        if u_conf is None:
+            continue
+        pickle_path = meta_mol.get('pickle_path')
+        if pickle_path is None:
+            continue
+        if u_conf < conf_per_mol:
+            continue
+
+        with open(os.path.join(base_path, pickle_path), 'rb') as fin:
+            mol = pickle.load(fin)
+            rdkit_mol_smiles.append(mol2smiles(mol))
+
+    return rdkit_mol_smiles
 
 def retrieve_qm9_smiles(dataset_info):
     dataset_name = dataset_info['name']

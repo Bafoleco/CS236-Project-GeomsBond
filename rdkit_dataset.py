@@ -10,6 +10,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from bond_helpers import get_one_hot_bonds, get_molecular_stability, type_map, inv_type_map
+from rdkit import Chem
 
 def get_rdkit_datafiles(dataset):
     base_path = "./data/rdkit_folder/"
@@ -94,7 +95,6 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
         index2split[split_indexes[i]] = 'val'
     for i in range(int(len(split_indexes) * (train_size + val_size)), len(split_indexes)):
         index2split[split_indexes[i]] = 'test'        
-
 
     num_mols = np.zeros(4, dtype=int) # (tot, train, val, test)
     num_confs = np.zeros(4, dtype=int) # (tot, train, val, test)
@@ -202,6 +202,10 @@ def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
     pos = torch.tensor(mol.GetConformer(0).GetPositions(), dtype=torch.float32)
 
     data = {}
+
+    # rdkit_smiles = Chem.MolToSmiles(mol)
+    # if rdkit_smiles != smiles:
+    #     print("mismatched smiles: ", rdkit_smiles, " != ", smiles)
 
     # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
     # print("molecule num fragments: ", len(rdkit.Chem.rdmolops.GetMolFrags(mol, asMols=True)))
