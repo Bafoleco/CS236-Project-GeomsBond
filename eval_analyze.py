@@ -3,6 +3,8 @@ try:
     from rdkit import Chem
 except ModuleNotFoundError:
     pass
+from bond_helpers import get_mols
+from mol_based_evals import BasicMolBasedMetrics
 import utils
 import argparse
 from qm9 import dataset
@@ -39,9 +41,10 @@ def analyze_and_save(args, eval_args, device, generative_model,
     assert n_samples % batch_size == 0
     molecules = {'one_hot': [], 'x': [], 'node_mask': []}
     start_time = time.time()
+    mols = []
     for i in range(int(n_samples/batch_size)):
         nodesxsample = nodes_dist.sample(batch_size)
-        one_hot, charges, x, node_mask = sample(
+        one_hot, charges, x, bonds, node_mask = sample(
             args, device, generative_model, dataset_info, prop_dist=prop_dist, nodesxsample=nodesxsample)
 
         molecules['one_hot'].append(one_hot.detach().cpu())
@@ -53,6 +56,8 @@ def analyze_and_save(args, eval_args, device, generative_model,
         print('\t %d/%d Molecules generated at %.2f secs/sample' % (
             current_num_samples, n_samples, secs_per_sample))
 
+        mols += get_mols(charges, bonds, node_mask)
+
         if save_to_xyz:
             id_from = i * batch_size
             qm9_visualizer.save_xyz_file(
@@ -60,11 +65,14 @@ def analyze_and_save(args, eval_args, device, generative_model,
                 one_hot, charges, x, dataset_info, id_from, name='molecule',
                 node_mask=node_mask)
 
-    molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
-    stability_dict, rdkit_metrics = analyze_stability_for_molecules(
-        molecules, dataset_info)
+    metrics = BasicMolBasedMetrics(dataset_info)
+    [validity, uniqueness, novelty, stability], unique = metrics.evaluate(mols)
 
-    return stability_dict, rdkit_metrics
+    # molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
+    # stability_dict, rdkit_metrics = analyze_stability_for_molecules(
+    #     molecules, dataset_info)
+
+    # return stability_dict, rdkit_metrics
 
 
 def test(args, flow_dp, nodes_dist, device, dtype, loader, partition='Test', num_passes=1):
