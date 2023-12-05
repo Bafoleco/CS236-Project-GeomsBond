@@ -8,11 +8,15 @@ inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: B
 
 # TODO we may want to add positions if we are doing visualizations later
 def get_mols(charges, bonds, node_mask):
+    print("charges: ", charges.shape)
+    print("bonds: ", bonds.shape)
+    print("node mask: ", node_mask.shape)
     bs = bonds.shape[0]
     mols = []
     for i in range(bs):
         n_atoms = node_mask[i].sum()
-        mol = get_mol(bonds[i], charges[i], n_atoms)
+        print("n_atoms: ", n_atoms)
+        mol = get_mol(bonds[i], charges[i], int(n_atoms.item()))
         if mol is not None:
             mols.append(mol)
     return mols
