@@ -6,6 +6,17 @@ from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
 type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
 inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
 
+# TODO we may want to add positions if we are doing visualizations later
+def get_mols(charges, bonds, node_mask):
+    bs = bonds.shape[0]
+    mols = []
+    for i in range(bs):
+        n_atoms = node_mask[i].sum()
+        mol = get_mol(bonds[i], charges[i], n_atoms)
+        if mol is not None:
+            mols.append(mol)
+    return mols
+
 def get_mol(adj, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
     if charges.min() < 1 or charges.max() > 9:
@@ -89,6 +100,26 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
 
     return incorrect_bond_predictions.sum() / edge_mask.sum()
 
+# akin to their notion of molecular stability
+def is_mol_stable(mol):
+    if mol is None:
+        return False
+
+    if len(Chem.GetMolFrags(mol)) > 1:
+        return False
+
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
+            return False
+        if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
+            return False
+        if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
+            return False
+        if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
+            return False
+        if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
+            return False
+
 def get_molecular_stability(bond_rec, charges):
     start = time.time()
     batch_size, _, _, _ = bond_rec.shape
@@ -100,37 +131,8 @@ def get_molecular_stability(bond_rec, charges):
 
         mol = get_mol(bond_rec[i], charges[i], n_atoms)
 
-        if mol is None:
+        if is_mol_stable(mol):
             octet_rule_violations += 1
-            continue
-
-        if len(Chem.GetMolFrags(mol)) > 1:
-            octet_rule_violations += 1
-            continue
-
-        for atom in mol.GetAtoms():
-            # print("type: ", atom.GetSymbol())
-            # print("valence: ", atom.GetExplicitValence())
-            if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
-                octet_rule_violations += 1
-                break
-            if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
-                octet_rule_violations += 1
-                break
-            if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
-                octet_rule_violations += 1
-                break
-            if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
-                octet_rule_violations += 1
-                break
-            if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
-                octet_rule_violations += 1
-                break
-
-            # doesn't work for some reason
-            # if atom.GetFormalCharge() != 0:
-            #     octet_rule_violations += 1
-            #     break
 
     end = time.time()
     # print("octet rule violations time: ", end - start)

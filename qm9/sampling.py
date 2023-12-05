@@ -136,7 +136,7 @@ def sample(args, device, generative_model, dataset_info,
         context = None
 
     if args.probabilistic_model == 'diffusion':
-        x, h = generative_model.sample(batch_size, max_n_nodes, node_mask, edge_mask, context, fix_noise=fix_noise)
+        x, h, bonds = generative_model.sample(batch_size, max_n_nodes, node_mask, edge_mask, context, fix_noise=fix_noise)
         # Don't need to sample bonds here because this is only for diffusion models?
 
         assert_correctly_masked(x, node_mask)
@@ -152,8 +152,7 @@ def sample(args, device, generative_model, dataset_info,
     else:
         raise ValueError(args.probabilistic_model)
 
-    return one_hot, charges, x, node_mask # see above -- no bonds here right?
-    return one_hot, charges, x, bonds, node_mask # need edge_mask too? - DW
+    return one_hot, charges, x, bonds, node_mask
 
 
 def sample_sweep_conditional(args, device, generative_model, dataset_info, prop_dist, n_nodes=19, n_frames=100):

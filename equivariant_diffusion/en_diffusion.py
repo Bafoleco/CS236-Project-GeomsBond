@@ -1262,7 +1262,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
         diffusion_utils.assert_correctly_masked(z_xh, node_mask)
         x, h, bonds = self.vae.decode(z_xh, node_mask, edge_mask, context)
 
-        return x, h
+        return x, h, bonds
     
     @torch.no_grad()
     def sample_chain(self, n_samples, n_nodes, node_mask, edge_mask, context, keep_frames=None):
@@ -1284,7 +1284,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
             z_xh = chain[i]
             diffusion_utils.assert_mean_zero_with_mask(z_xh[:, :, :self.n_dims], node_mask)
 
-            x, h = self.vae.decode(z_xh, node_mask, edge_mask, context)
+            x, h, bonds = self.vae.decode(z_xh, node_mask, edge_mask, context)
             xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
             chain_decoded[i] = xh
         
