@@ -15,7 +15,6 @@ def get_mols(charges, bonds, node_mask):
     mols = []
     for i in range(bs):
         n_atoms = node_mask[i].sum()
-        print("n_atoms: ", n_atoms)
         mol = get_mol(bonds[i], charges[i], int(n_atoms.item()))
         mols.append(mol)
 

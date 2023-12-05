@@ -137,7 +137,8 @@ class BasicMolecularMetrics(object):
 def mol2smiles(mol):
     try:
         Chem.SanitizeMol(mol)
-    except ValueError:
+    except ValueError as e:
+        print(e)
         return None
     return Chem.MolToSmiles(mol)
 
