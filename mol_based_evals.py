@@ -4,8 +4,6 @@ import pickle
 
 import tqdm
 from bond_helpers import is_mol_stable
-from configs.datasets_config import get_dataset_info
-from qm9 import dataset
 from qm9.rdkit_functions import mol2smiles
 from rdkit import Chem
 from qm9.rdkit_functions import mol2smiles
