@@ -202,13 +202,9 @@ def valid_fraction(bond_rec, charges):
 
 def octet_rule_violations_old(bond_rec, charges):
     predicted_bonds = bond_rec.argmax(dim=-1).float()
-    # print("predicted bonds: ", predicted_bonds[0])
 
     predicted_bonds[predicted_bonds == 4] = 1.5
     predicted_bonds = predicted_bonds.sum(dim=-1).unsqueeze(-1)
-
-    # print("predicted bonds: ", predicted_bonds)
-    # print("charges: ", charges)
 
     hydrogens = (charges == 1)
     carbons = (charges == 6)
