@@ -15,7 +15,7 @@ import torch
 
 
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dtype, property_norms, optim,
-                nodes_dist, gradnorm_queue, dataset_info, prop_dist, experimental_loader):
+                nodes_dist, gradnorm_queue, dataset_info, prop_dist):
     model_dp.train()
     model.train()
     nll_epoch = []
@@ -28,11 +28,6 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
         one_hot = data['one_hot'].to(device, dtype)
         charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
         bonds = data['bonds'].to(device, int) if args.rdkit else None
-
-        # print(x.shape)
-        # print(node_mask.shape)
-        # print(edge_mask.shape)
-        # print(one_hot.shape)
 
         x = remove_mean_with_mask(x, node_mask)
 

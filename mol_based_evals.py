@@ -35,6 +35,7 @@ def get_qm9_smiles(dataset_name):
 
         with open(os.path.join(base_path, pickle_path), 'rb') as fin:
             mol = pickle.load(fin)
+            mol = mol.get('conformers')[0].get('rd_mol')
             rdkit_mol_smiles.append(mol2smiles(mol))
 
     return rdkit_mol_smiles
@@ -71,6 +72,8 @@ class BasicMolBasedMetrics(object):
         valid = []
 
         for mol in generated:
+            if mol is None:
+                continue
             smiles = mol2smiles(mol)
             if smiles is not None:
                 mol_frags = Chem.rdmolops.GetMolFrags(mol, asMols=True)
@@ -96,7 +99,8 @@ class BasicMolBasedMetrics(object):
     def compute_molecular_stability(self, generated):
         stable = []
         for mol in generated:
-            stable.append(is_mol_stable(mol))
+            if is_mol_stable(mol):
+                stable.append(mol)
         return stable, len(stable) / len(generated)
 
     def evaluate(self, generated):

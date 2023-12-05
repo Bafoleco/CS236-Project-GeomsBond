@@ -1,7 +1,7 @@
 import time
 import torch
 from rdkit import Chem
-from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
+from rdkit.Chem.rdchem import BondType
 
 type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
 inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
@@ -17,8 +17,8 @@ def get_mols(charges, bonds, node_mask):
         n_atoms = node_mask[i].sum()
         print("n_atoms: ", n_atoms)
         mol = get_mol(bonds[i], charges[i], int(n_atoms.item()))
-        if mol is not None:
-            mols.append(mol)
+        mols.append(mol)
+
     return mols
 
 def get_mol(adj, charges, n_atoms):

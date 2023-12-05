@@ -261,13 +261,12 @@ def main():
 
     best_nll_val = 1e8
     best_nll_test = 1e8
-    experimental_loader = None
     for epoch in range(args.start_epoch, args.n_epochs):
         start_epoch = time.time()
-        # train_epoch(args=args, loader=dataloaders['train'], experimental_loader=experimental_loader, epoch=epoch, model=model, model_dp=model_dp,
-        #             model_ema=model_ema, ema=ema, device=device, dtype=dtype, property_norms=property_norms,
-        #             nodes_dist=nodes_dist, dataset_info=dataset_info,
-        #             gradnorm_queue=gradnorm_queue, optim=optim, prop_dist=prop_dist)
+        train_epoch(args=args, loader=dataloaders['train'], epoch=epoch, model=model, model_dp=model_dp,
+                    model_ema=model_ema, ema=ema, device=device, dtype=dtype, property_norms=property_norms,
+                    nodes_dist=nodes_dist, dataset_info=dataset_info,
+                    gradnorm_queue=gradnorm_queue, optim=optim, prop_dist=prop_dist)
         print(f"Epoch took {time.time() - start_epoch:.1f} seconds.")
 
         if epoch % args.test_epochs == 0:
