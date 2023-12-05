@@ -294,28 +294,31 @@ class EGNN_encoder_QM9(nn.Module):
 
 
 class QuadraticEstimator(nn.Module):
-    def __init__(self, latent_node_nf, n_bond_orders):
+    def __init__(self, input_dim, n_bond_orders):
         super().__init__()
-        self.latent_node_nf = latent_node_nf
+        self.input_dim = input_dim
         self.n_bond_orders = n_bond_orders
+
+        self.hidden_dim = 64
+
         self.A = torch.nn.Parameter(torch.randn(
-            (n_bond_orders, 1, latent_node_nf, latent_node_nf)
+            (n_bond_orders, 1, self.hidden_dim, self.hidden_dim)
         ))
 
         # mlp embedding of latents
         self.mlp = nn.Sequential(
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(input_dim, self.hidden_dim),
             nn.SiLU(),
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.SiLU(),
         )
 
     def forward(self, z_xh):
-        bs,n_nodes,latent_node_nf = z_xh.shape
+        bs, n_nodes, latent_node_nf = z_xh.shape
 
         # shoot, I may have been wrong about how promising this was
         # it seems pretty weird to treat x and h the same way
-        assert latent_node_nf == self.latent_node_nf
+        assert latent_node_nf == self.input_dim
 
         # TODO There should be a better way to do this that saves 
         # half the parameters... something with torch.triu?
@@ -347,6 +350,11 @@ class EGNN_decoder_QM9(nn.Module):
 
         include_charges = int(include_charges)
         num_classes = out_node_nf - include_charges
+
+        self.final_mlp = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            act_fn,
+            nn.Linear(hidden_nf, out_node_nf))
 
         self.mode = mode
         if mode == 'egnn_dynamics':
@@ -422,11 +430,11 @@ class EGNN_decoder_QM9(nn.Module):
         if self.mode == 'egnn_dynamics':
             h_final, x_final, bonds = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
-        elif self.mode == 'gnn_dynamics':
-            xh = torch.cat([x, h], dim=1)
-            output = self.gnn(xh, edges, node_mask=node_mask)
-            vel = output[:, 0:3] * node_mask
-            h_final = output[:, 3:]
+        # elif self.mode == 'gnn_dynamics':
+        #     xh = torch.cat([x, h], dim=1)
+        #     output = self.gnn(xh, edges, node_mask=node_mask)
+        #     vel = output[:, 0:3] * node_mask
+        #     h_final = output[:, 3:]
         else:
             raise Exception("Wrong mode %s" % self.mode)
 

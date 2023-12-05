@@ -5,9 +5,12 @@ import random
 from tqdm import tqdm
 import pickle
 import rdkit
-from rdkit.Chem.rdchem import Mol, HybridizationType, BondType
+from rdkit.Chem.rdchem import Mol
 import torch
 from torch.nn.utils.rnn import pad_sequence
+
+from bond_helpers import get_one_hot_bonds, get_molecular_stability, type_map, inv_type_map
+from rdkit import Chem
 
 def get_rdkit_datafiles(dataset):
     base_path = "./data/rdkit_folder/"
@@ -32,7 +35,7 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     dataset_name = "qm9"
     conf_per_mol = 1
     train_size = 0.8
-    tot_mol_size = 30000
+    tot_mol_size = 130000
 
     # set random seed
     if seed is None:
@@ -45,6 +48,15 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     summary_path = os.path.join(base_path, 'summary_%s.json' % dataset_name)
     with open(summary_path, 'r') as f:
         summ = json.load(f)
+
+    # smiles map
+    path = os.path.join(base_path, 'smiles_map.json')
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            smiles_map = json.load(f)
+    else:
+        print("please run build_smiles_map.py first")
+        exit(-1)
 
     # filter valid pickle path
     smiles_list = []
@@ -84,7 +96,6 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
     for i in range(int(len(split_indexes) * (train_size + val_size)), len(split_indexes)):
         index2split[split_indexes[i]] = 'test'        
 
-
     num_mols = np.zeros(4, dtype=int) # (tot, train, val, test)
     num_confs = np.zeros(4, dtype=int) # (tot, train, val, test)
 
@@ -115,7 +126,7 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
 
         for conf_id in conf_ids:
             conf_meta = mol.get('conformers')[conf_id]
-            data = rdmol_to_data(conf_meta.get('rd_mol'), smiles=smiles)
+            data = rdmol_to_data(conf_meta.get('rd_mol'), smiles_map, smiles=smiles)
             labels = {
                 'totalenergy': conf_meta['totalenergy'],
                 'boltzmannweight': conf_meta['boltzmannweight'],
@@ -154,9 +165,6 @@ def get_rdkit_dataloader(args, seed=None, stack=True):
         if stack:
             stacked_molecules = {}
             for key, val in molecules.items():
-                print("key", key, val[0].shape, val[1].shape)
-                # if key == "bonds":
-                #     continue
                 if val[0].dim() > 0:
                     stacked_molecules[key] = pad_sequence(val, batch_first=True)
                 else:
@@ -180,13 +188,12 @@ charge_dict = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'F': 9}
 all_species = torch.tensor([0, 1, 6, 7, 8, 9])
 
 def bond_type_to_int(bond_type):
-    type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
     if bond_type not in type_map:
         print("uknown bond type: " + bond_type)
         exit(-1)
     return type_map[bond_type]
 
-def rdmol_to_data(mol:Mol, smiles=None):
+def rdmol_to_data(mol:Mol, smiles_map, smiles=None):
     assert mol.GetNumConformers() == 1
     N = mol.GetNumAtoms()
 
@@ -196,19 +203,40 @@ def rdmol_to_data(mol:Mol, smiles=None):
 
     data = {}
 
-    # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+    # rdkit_smiles = Chem.MolToSmiles(mol)
+    # if rdkit_smiles != smiles:
+    #     print("mismatched smiles: ", rdkit_smiles, " != ", smiles)
 
+    # print("molecule has: ", len(mol.GetBonds()), " bonds and ", mol.GetNumAtoms(), " atoms.")
+    # print("molecule num fragments: ", len(rdkit.Chem.rdmolops.GetMolFrags(mol, asMols=True)))
+
+    # bonded_set = set()
     # for bond in mol.GetBonds():
-    #     print(bond.GetBondType())
+    #     print("bond from ", bond.GetBeginAtom().GetSymbol(), " to ", bond.GetEndAtom().GetSymbol())
+    #     bonded_set.add(bond.GetBeginAtomIdx())
+    #     bonded_set.add(bond.GetEndAtomIdx())
+
+    # print("bonded set: ", len(bonded_set))
 
     data['positions'] = pos
     data['charges'] = torch.tensor([charge_dict[atom.GetSymbol()] for atom in mol.GetAtoms()])
+    # probably small optimizatio to not store duplicate bonds
     data['bonds'] = torch.tensor([(bond_type_to_int(bond.GetBondType()), bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()) 
               for bond in mol.GetBonds()])
 
+    # print("bonds: ", data['bonds'])
+    # adj = get_one_hot_bonds(data['bonds'].unsqueeze(0), mol.GetNumAtoms(), 5)
+    # print("adj: ", adj.shape)
+    # print("adj bond count: ", adj[:, :, :, 1:].sum())
+    # get_molecular_stability(adj, data['charges'].unsqueeze(0))
+
     data['one_hot'] = data['charges'].unsqueeze(-1) == all_species.unsqueeze(0)
 
-    # print(data['one_hot'])
+    data['num_atoms'] = torch.tensor(N, dtype=torch.long)
+
+    if smiles is not None:
+        data['smiles'] = torch.tensor(smiles_map[smiles], dtype=torch.long)
+
     return data
 
 

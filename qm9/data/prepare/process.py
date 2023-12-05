@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import torch
@@ -80,6 +81,16 @@ def process_xyz_files(data, process_file_fn, file_ext=None, file_idx_list=None, 
     if file_idx_list is not None:
         files = [file for idx, file in enumerate(files) if idx in file_idx_list]
 
+    # load smiles map
+    base_path = "./data/rdkit_folder/"
+    path = os.path.join(base_path, 'smiles_map.json')
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            smiles_map = json.load(f)
+    else:
+        print("please run build_smiles_map.py first")
+        exit(-1)
+
     # Now loop over files using readfile function defined above
     # Process each file accordingly using process_file_fn
 
@@ -87,7 +98,7 @@ def process_xyz_files(data, process_file_fn, file_ext=None, file_idx_list=None, 
 
     for file in files:
         with readfile(file) as openfile:
-            molecules.append(process_file_fn(openfile))
+            molecules.append(process_file_fn(openfile, smiles_map=smiles_map))
 
     # Check that all molecules have the same set of items in their dictionary:
     props = molecules[0].keys()
@@ -158,7 +169,7 @@ def process_xyz_md17(datafile):
     return molecule
 
 
-def process_xyz_gdb9(datafile):
+def process_xyz_gdb9(datafile, smiles_map=None):
     """
     Read xyz file and return a molecular dict with number of atoms, energy, forces, coordinates and atom-type for the gdb9 dataset.
 
@@ -200,7 +211,16 @@ def process_xyz_gdb9(datafile):
     molecule = {'num_atoms': num_atoms, 'charges': atom_charges, 'positions': atom_positions}
     molecule.update(mol_props)
     molecule = {key: torch.tensor(val) for key, val in molecule.items()}
-    # molecule['smiles'] = smiles.split()
-    # print(molecule)
+    print(smiles.split())
+
+    missing = 0
+    smiles = smiles.split()[1]
+    if smiles in smiles_map:
+        molecule['smiles'] = torch.tensor(smiles_map[smiles], dtype=torch.long)
+    else:
+        molecule['smiles'] = torch.tensor(-1, dtype=torch.long)
+        missing += 1
+
+    print("missing: ", missing, " of ", len(smiles_map))
 
     return molecule

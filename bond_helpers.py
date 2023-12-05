@@ -1,4 +1,60 @@
+import time
 import torch
+from rdkit import Chem
+from rdkit.Chem.rdchem import BondType
+
+type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
+inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
+
+# TODO we may want to add positions if we are doing visualizations later
+def get_mols(charges, bonds, node_mask):
+    print("charges: ", charges.shape)
+    print("bonds: ", bonds.shape)
+    print("node mask: ", node_mask.shape)
+    bs = bonds.shape[0]
+    mols = []
+    for i in range(bs):
+        n_atoms = node_mask[i].sum()
+        mol = get_mol(bonds[i], charges[i], int(n_atoms.item()))
+        mols.append(mol)
+
+    return mols
+
+def get_mol(adj, charges, n_atoms):
+    adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
+    charges = charges[:n_atoms]
+    if charges.min() < 1 or charges.max() > 9:
+        print("charge error: ", charges.min(), " max: ", charges.max())
+        return None
+    
+    if charges[charges == 2].sum() > 0:
+        return None
+    
+    if charges[charges == 3].sum() > 0:
+        return None
+    
+    if charges[charges == 4].sum() > 0:
+        return None
+    
+    if charges[charges == 5].sum() > 0:
+        return None
+    
+    charges = charges[:n_atoms]
+
+    mol = Chem.RWMol()
+    for i in range(n_atoms):
+        mol.AddAtom(Chem.Atom(int(charges[i])))
+
+    for i in range(n_atoms):
+        for j in range(n_atoms):
+            if adj[i, j] == 0:
+                continue
+            bond_type = int(adj[i, j])
+            if bond_type != 0 and i < j:
+                mol.AddBond(i, j, Chem.BondType(inv_type_map[bond_type]))
+
+    mol.UpdatePropertyCache(strict=False)
+    return mol
 
 def get_one_hot_bonds(bonds, n_nodes, n_bond_orders):
     batch_size, max_batch_num_edges, _ = bonds.shape
@@ -49,6 +105,137 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
 
     return incorrect_bond_predictions.sum() / edge_mask.sum()
 
+def check_atom(atom, log=False):
+    if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
+        if log:
+            print("nitrogen atom does not have 3 bonds, valence: ", atom.GetExplicitValence())
+        return False
+    if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
+        if log:
+            print("oxygen atom does not have 2 bonds, valence: ", atom.GetExplicitValence())
+        return False
+    if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
+        if log:
+            print("carbon atom does not have 4 bonds, valence: ", atom.GetExplicitValence())
+        return False
+    if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
+        if log:
+            print("fluorine atom does not have 1 bond, valence: ", atom.GetExplicitValence())
+        return False
+    if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
+        if log:
+            print("hydrogen atom does not have 1 bond, valence: ", atom.GetExplicitValence())
+        return False
+    return True
+
+def get_atomic_stability(mols):
+    n_stable = 0
+    n_atoms = 0
+    for mol in mols:
+        if mol is None:
+            continue
+        n_atoms += len(mol.GetAtoms())
+        for atom in mol.GetAtoms():
+            if check_atom(atom):
+                n_stable += 1
+
+    return n_stable / n_atoms
+
+# akin to their notion of molecular stability
+def is_mol_stable(mol, log=False):
+    if mol is None:
+        if log:
+            print("molecule is None")
+        return False
+
+    if len(Chem.GetMolFrags(mol)) > 1:
+        if log:
+            print("molecule has more than one fragment")
+        return False
+
+    for atom in mol.GetAtoms():
+        if not check_atom(atom, log=log):
+            return False
+
+def get_molecular_stability(bond_rec, charges):
+    start = time.time()
+    batch_size, _, _, _ = bond_rec.shape
+
+    octet_rule_violations = 0
+    for i in range(batch_size):
+        # index of last non-zero element
+        n_atoms = (charges[i] != 0).sum()
+
+        mol = get_mol(bond_rec[i], charges[i], n_atoms)
+
+        if is_mol_stable(mol):
+            octet_rule_violations += 1
+
+    end = time.time()
+    # print("octet rule violations time: ", end - start)
+    return (batch_size - octet_rule_violations) / batch_size
+
+def valid_fraction(bond_rec, charges):
+    start = time.time()
+    batch_size, n_nodes, n_nodes, _ = bond_rec.shape
+
+    octet_rule_violations = 0
+    for i in range(batch_size):
+        # index of last non-zero element
+        n_atoms = (charges[i] != 0).sum()
+
+        mol = get_mol(bond_rec[i], charges[i], n_atoms)
+
+        if len(Chem.GetMolFrags(mol)) > 1:
+            octet_rule_violations += 1
+            continue
+
+        try:
+            Chem.SanitizeMol(mol)
+        except ValueError:  
+            print("octet rule violation")
+            octet_rule_violations += 1
+
+    end = time.time()
+    print("octet rule violations time: ", end - start)
+    return (batch_size - octet_rule_violations) / batch_size
+
+def octet_rule_violations_old(bond_rec, charges):
+    predicted_bonds = bond_rec.argmax(dim=-1).float()
+
+    predicted_bonds[predicted_bonds == 4] = 1.5
+    predicted_bonds = predicted_bonds.sum(dim=-1).unsqueeze(-1)
+
+    hydrogens = (charges == 1)
+    carbons = (charges == 6)
+    nitrogens = (charges == 7)
+    oxygens = (charges == 8)
+    fluorines = (charges == 9)
+
+    correct_h = (predicted_bonds[hydrogens] == 1).sum()
+    correct_c = (predicted_bonds[carbons] == 4).sum()
+    correct_n = (predicted_bonds[nitrogens] == 3).sum()
+    correct_o = (predicted_bonds[oxygens] == 2).sum()
+    correct_f = (predicted_bonds[fluorines] == 1).sum()
+
+    total_h = hydrogens.sum()
+    total_c = carbons.sum()
+    total_n = nitrogens.sum()
+    total_o = oxygens.sum()
+    total_f = fluorines.sum()
+
+    print("hydrogen octet rule accuracy: ", correct_h / total_h)
+    print("carbon octet rule accuracy: ", correct_c / total_c)
+    print("nitrogen octet rule accuracy: ", correct_n / total_n)
+    print("oxygen octet rule accuracy: ", correct_o / total_o)
+    print("fluorine octet rule accuracy: ", correct_f / total_f)
+
+    total_correct = correct_h + correct_c + correct_n + correct_o + correct_f
+    total = total_h + total_c + total_n + total_o + total_f
+
+    print("total octet rule accuracy: ", total_correct / total)
+
+    return total_correct / total
 
 
 def check_adj_bonds(adj, bonds):
