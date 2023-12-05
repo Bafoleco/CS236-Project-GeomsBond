@@ -100,7 +100,7 @@ class BasicMolBasedMetrics(object):
     def compute_molecular_stability(self, generated):
         stable = []
         for mol in generated:
-            if is_mol_stable(mol):
+            if is_mol_stable(mol, log=True):
                 stable.append(mol)
         return stable, len(stable) / len(generated)
 
