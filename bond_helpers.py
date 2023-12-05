@@ -24,7 +24,7 @@ def get_mol(adj, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
     charges = charges[:n_atoms]
     if charges.min() < 1 or charges.max() > 9:
-        print("charge error: ", charges.min(), " max: ", charges.max())
+        # print("charge error: ", charges.min(), " max: ", charges.max())
         return None
     
     if charges[charges == 2].sum() > 0:
