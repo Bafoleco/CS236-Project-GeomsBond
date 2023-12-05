@@ -165,41 +165,40 @@ def main():
     generative_model.load_state_dict(flow_state_dict)
 
     # Analyze stability, validity, uniqueness and novelty
-    stability_dict, rdkit_metrics = analyze_and_save(
+    analyze_and_save(
         args, eval_args, device, generative_model, nodes_dist,
         prop_dist, dataset_info, n_samples=eval_args.n_samples,
         batch_size=eval_args.batch_size_gen, save_to_xyz=eval_args.save_to_xyz)
-    print(stability_dict)
 
-    if rdkit_metrics is not None:
-        rdkit_metrics = rdkit_metrics[0]
-        print("Validity %.4f, Uniqueness: %.4f, Novelty: %.4f" % (rdkit_metrics[0], rdkit_metrics[1], rdkit_metrics[2]))
-    else:
-        print("Install rdkit roolkit to obtain Validity, Uniqueness, Novelty")
+    # if rdkit_metrics is not None:
+    #     rdkit_metrics = rdkit_metrics[0]
+    #     print("Validity %.4f, Uniqueness: %.4f, Novelty: %.4f" % (rdkit_metrics[0], rdkit_metrics[1], rdkit_metrics[2]))
+    # else:
+    #     print("Install rdkit roolkit to obtain Validity, Uniqueness, Novelty")
 
-    # In GEOM-Drugs the validation partition is named 'val', not 'valid'.
-    if args.dataset == 'geom':
-        val_name = 'val'
-        num_passes = 1
-    else:
-        val_name = 'valid'
-        num_passes = 5
+    # # In GEOM-Drugs the validation partition is named 'val', not 'valid'.
+    # if args.dataset == 'geom':
+    #     val_name = 'val'
+    #     num_passes = 1
+    # else:
+    #     val_name = 'valid'
+    #     num_passes = 5
 
-    # Evaluate negative log-likelihood for the validation and test partitions
-    val_nll = test(args, generative_model, nodes_dist, device, dtype,
-                   dataloaders[val_name],
-                   partition='Val')
-    print(f'Final val nll {val_nll}')
-    test_nll = test(args, generative_model, nodes_dist, device, dtype,
-                    dataloaders['test'],
-                    partition='Test', num_passes=num_passes)
-    print(f'Final test nll {test_nll}')
+    # # Evaluate negative log-likelihood for the validation and test partitions
+    # val_nll = test(args, generative_model, nodes_dist, device, dtype,
+    #                dataloaders[val_name],
+    #                partition='Val')
+    # print(f'Final val nll {val_nll}')
+    # test_nll = test(args, generative_model, nodes_dist, device, dtype,
+    #                 dataloaders['test'],
+    #                 partition='Test', num_passes=num_passes)
+    # print(f'Final test nll {test_nll}')
 
-    print(f'Overview: val nll {val_nll} test nll {test_nll}', stability_dict)
-    with open(join(eval_args.model_path, 'eval_log.txt'), 'w') as f:
-        print(f'Overview: val nll {val_nll} test nll {test_nll}',
-              stability_dict,
-              file=f)
+    # print(f'Overview: val nll {val_nll} test nll {test_nll}', stability_dict)
+    # with open(join(eval_args.model_path, 'eval_log.txt'), 'w') as f:
+    #     print(f'Overview: val nll {val_nll} test nll {test_nll}',
+    #           stability_dict,
+    #           file=f)
 
 
 if __name__ == "__main__":
