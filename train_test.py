@@ -178,7 +178,7 @@ def sample_different_sizes_and_save(model, nodes_dist, args, device, dataset_inf
     for counter in range(int(n_samples/batch_size)):
         nodesxsample = nodes_dist.sample(batch_size)
         # TODO: modify the sample function to output bonds along with x? or it seems this is only for diffusion?
-        one_hot, charges, x, node_mask = sample(args, device, model, prop_dist=prop_dist,
+        one_hot, charges, x, bonds, node_mask = sample(args, device, model, prop_dist=prop_dist,
                                                 nodesxsample=nodesxsample,
                                                 dataset_info=dataset_info)
         print(f"Generated molecule: Positions {x[:-1, :, :]}")
