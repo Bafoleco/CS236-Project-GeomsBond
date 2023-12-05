@@ -132,6 +132,8 @@ def get_atomic_stability(mols):
     n_stable = 0
     n_atoms = 0
     for mol in mols:
+        if mol is None:
+            continue
         n_atoms += len(mol.GetAtoms())
         for atom in mol.GetAtoms():
             if check_atom(atom):
