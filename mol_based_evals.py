@@ -2,7 +2,7 @@ import json
 import os
 import pickle
 
-import tqdm
+from tqdm import tqdm
 from bond_helpers import is_mol_stable
 from qm9.rdkit_functions import mol2smiles
 from rdkit import Chem
