@@ -166,7 +166,7 @@ class EquivariantBlock(nn.Module):
             nn.Linear(hidden_nf, hidden_nf),
             act_fn,
             nn.Linear(hidden_nf, n_bond_orders),
-            nn.Softmax(dim=-1)
+            # nn.Softmax(dim=-1)
         ) # TODO: A way to make this the same across all EquivBlocks? init it higher up and pass it around?
         # or does that happen automatically?
 
