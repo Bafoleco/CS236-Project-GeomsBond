@@ -120,23 +120,23 @@ def is_mol_stable(mol, log=False):
     for atom in mol.GetAtoms():
         if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
             if log:
-                print("nitrogen atom does not have 3 bonds")
+                print("nitrogen atom does not have 3 bonds, valence: ", atom.GetExplicitValence())
             return False
         if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
             if log:
-                print("oxygen atom does not have 2 bonds")
+                print("oxygen atom does not have 2 bonds, valence: ", atom.GetExplicitValence())
             return False
         if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
             if log:
-                print("carbon atom does not have 4 bonds")
+                print("carbon atom does not have 4 bonds, valence: ", atom.GetExplicitValence())
             return False
         if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
             if log:
-                print("fluorine atom does not have 1 bond")
+                print("fluorine atom does not have 1 bond, valence: ", atom.GetExplicitValence())
             return False
         if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
             if log:
-                print("hydrogen atom does not have 1 bond")
+                print("hydrogen atom does not have 1 bond, valence: ", atom.GetExplicitValence())
             return False
 
 def get_molecular_stability(bond_rec, charges):
