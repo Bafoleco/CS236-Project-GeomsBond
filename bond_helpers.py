@@ -23,6 +23,7 @@ def get_mols(charges, bonds, node_mask):
 def get_mol(adj, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
     if charges.min() < 1 or charges.max() > 9:
+        print("charge error: ", charges.min(), " max: ", charges.max())
         return None
     
     if charges[charges == 2].sum() > 0:
@@ -104,23 +105,37 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
     return incorrect_bond_predictions.sum() / edge_mask.sum()
 
 # akin to their notion of molecular stability
-def is_mol_stable(mol):
+def is_mol_stable(mol, log=False):
     if mol is None:
+        if log:
+            print("molecule is None")
         return False
 
     if len(Chem.GetMolFrags(mol)) > 1:
+        if log:
+            print("molecule has more than one fragment")
         return False
 
     for atom in mol.GetAtoms():
         if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
+            if log:
+                print("nitrogen atom does not have 3 bonds")
             return False
         if atom.GetSymbol() == "O" and atom.GetExplicitValence() != 2:
+            if log:
+                print("oxygen atom does not have 2 bonds")
             return False
         if atom.GetSymbol() == "C" and atom.GetExplicitValence() != 4:
+            if log:
+                print("carbon atom does not have 4 bonds")
             return False
         if atom.GetSymbol() == "F" and atom.GetExplicitValence() != 1:
+            if log:
+                print("fluorine atom does not have 1 bond")
             return False
         if atom.GetSymbol() == "H" and atom.GetExplicitValence() != 1:
+            if log:
+                print("hydrogen atom does not have 1 bond")
             return False
 
 def get_molecular_stability(bond_rec, charges):

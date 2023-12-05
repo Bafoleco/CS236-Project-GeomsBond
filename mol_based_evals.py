@@ -73,6 +73,7 @@ class BasicMolBasedMetrics(object):
 
         for mol in generated:
             if mol is None:
+                print("None molecule")
                 continue
             smiles = mol2smiles(mol)
             if smiles is not None:
