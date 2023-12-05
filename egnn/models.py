@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from egnn.egnn_new import EGNN, GNN
+from egnn.egnn_paper import EGNN_PAPER
 from equivariant_diffusion.utils import remove_mean, remove_mean_with_mask
 import numpy as np
 
@@ -14,7 +15,7 @@ class EGNN_dynamics_QM9(nn.Module):
         super().__init__()
         self.mode = mode
         if mode == 'egnn_dynamics':
-            self.egnn = EGNN(
+            self.egnn = EGNN_PAPER(
                 in_node_nf=in_node_nf + context_node_nf, in_edge_nf=1,
                 hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
