@@ -164,6 +164,11 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
 
         bond_errors /= n_samples
         print(f"Bond errors: {bond_errors} for partition {partition} at epoch {epoch}")
+        wandb.log({"Unbonded error": bond_errors[0]}, commit=True)
+        wandb.log({"Single bond error": bond_errors[1]}, commit=True)
+        wandb.log({"Double bond error": bond_errors[2]}, commit=True)
+        wandb.log({"Triple bond error": bond_errors[3]}, commit=True)
+        wandb.log({"Aromatic bond error": bond_errors[4]}, commit=True)
 
     return nll_epoch/n_samples
 
