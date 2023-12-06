@@ -9,7 +9,7 @@ type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType
 inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
 
 # TODO we may want to add positions if we are doing visualizations later
-def get_mols(charges, bonds, node_mask):
+def get_mols(charges, x, bonds, node_mask):
     print("charges: ", charges.shape)
     print("bonds: ", bonds.shape)
     print("node mask: ", node_mask.shape)
@@ -17,7 +17,7 @@ def get_mols(charges, bonds, node_mask):
     mols = []
     for i in range(bs):
         n_atoms = node_mask[i].sum()
-        mol = get_mol(bonds[i], charges[i], int(n_atoms.item()))
+        mol = get_mol(bonds[i], x[i], charges[i], int(n_atoms.item()))
         mols.append(mol)
 
     return mols
@@ -41,6 +41,8 @@ def get_mol(adj, charges, n_atoms):
     if charges[charges == 5].sum() > 0:
         return None
     
+    print("passed charge check")
+    
     charges = charges[:n_atoms]
 
     mol = Chem.RWMol()
@@ -54,6 +56,11 @@ def get_mol(adj, charges, n_atoms):
             bond_type = int(adj[i, j])
             if bond_type != 0 and i < j:
                 mol.AddBond(i, j, Chem.BondType(inv_type_map[bond_type]))
+    
+    conf = mol.GetConformer()
+    for i in range(n_atoms):
+        x, y, z = x[i][0], x[i][1], x[i][2]
+        conf.SetAtomPosition(i, (x, y, z))
 
     mol.UpdatePropertyCache(strict=False)
     return mol

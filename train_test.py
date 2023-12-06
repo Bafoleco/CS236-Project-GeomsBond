@@ -209,7 +209,7 @@ def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info
         molecules['x'].append(x.detach().cpu())
         molecules['node_mask'].append(node_mask.detach().cpu())
 
-        mols += get_mols(charges, bonds, node_mask)
+        mols += get_mols(charges, x, bonds, node_mask)
 
     molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
 

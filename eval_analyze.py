@@ -56,7 +56,7 @@ def analyze_and_save(args, eval_args, device, generative_model,
         print('\t %d/%d Molecules generated at %.2f secs/sample' % (
             current_num_samples, n_samples, secs_per_sample))
 
-        mols += get_mols(charges, bonds, node_mask)
+        mols += get_mols(charges, x, bonds, node_mask)
 
         if save_to_xyz:
             id_from = i * batch_size
