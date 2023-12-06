@@ -897,7 +897,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
         return (number_of_nodes - 1) * self.n_dims
 
-    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds, edge_mask=None, log_eval=False):
+    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds, edge_mask=None, log_eval=False, bond_eval=None):
         """Computes reconstruction error."""
 
         bs, n_nodes, dims = xh.shape
@@ -934,14 +934,14 @@ class EnHierarchicalVAE(torch.nn.Module):
             # less of an issue.)
             # bs,n_edges,n_bond_orders = bonds_tensor.shape
             
-            # print(bonds_tensor.shape)
-            # print(bonds_rec.shape)
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
 
-            # print("bonds rec: ", bonds_rec.shape)
-            # print("bonds tensor: ", bonds_tensor.shape)
-            print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
-
+            overall_bond_error, bond_errors = bond_accuracy(bonds_rec, bonds_tensor, edge_mask)
+            print("Overall bond error: ", overall_bond_error)
+            print("Bond errors: ", bond_errors)
+            if bond_eval is not None:
+                bond_eval["eval"] = bond_errors
+            
             n_edges = n_nodes * n_nodes 
 
             assert bonds_tensor.shape == bonds_rec.shape
@@ -972,7 +972,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         eps = self.sample_combined_position_feature_noise(bs, mu.size(1), node_mask)
         return mu + sigma * eps
     
-    def compute_loss(self, x, h, bonds, node_mask, edge_mask, context, partition="Train"):
+    def compute_loss(self, x, h, bonds, node_mask, edge_mask, context, partition="Train", bond_eval=None):
         """Computes an estimator for the variational lower bound."""
 
         # # print("compute loss")
@@ -1012,7 +1012,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
         # print("x,h,bonds recon shape:",x_recon.shape, h_recon.shape, bonds_rec.shape)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
-        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask, log_eval=(partition=="Val"))
+        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask, log_eval=(partition=="Val"), bond_eval=bond_eval)
 
         # Combining the terms
         assert loss_recon.size() == loss_kl.size()
@@ -1022,12 +1022,12 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         return loss, {'loss_t': loss.squeeze(), 'rec_error': loss_recon.squeeze()}
 
-    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition="Train"):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition="Train", bond_eval=None):
         """
         Computes the ELBO if training. And if eval then always computes NLL.
         """
 
-        loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context, partition=partition)
+        loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context, partition=partition, bond_eval=bond_eval)
 
         neg_log_pxh = loss
 

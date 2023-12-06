@@ -118,7 +118,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
         n_samples = 0
 
         n_iterations = len(loader)
-
+        bond_errors = np.zeros(5)
         for i, data in enumerate(loader):
             x = data['positions'].to(device, dtype)
             batch_size = x.size(0)
@@ -148,8 +148,12 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
                 context = None
 
             # transform batch through flow
+            bond_eval = {}
             nll, _, _ = losses.compute_loss_and_nll(args, eval_model, nodes_dist, x, h,
-                                                    bonds, node_mask, edge_mask, context, partition=partition)
+                                                    bonds, node_mask, edge_mask, context, partition=partition, bond_eval=bond_eval)
+            
+            bond_errors += bond_eval["eval"] * batch_size
+            
             # standard nll from forward KL
 
             nll_epoch += nll.item() * batch_size
@@ -157,6 +161,9 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
             if i % args.n_report_steps == 0:
                 print(f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
                       f"NLL: {nll_epoch/n_samples:.2f}")
+
+        bond_errors /= n_samples
+        print(f"Bond errors: {bond_errors} for partition {partition} at epoch {epoch}")
 
     return nll_epoch/n_samples
 
@@ -207,8 +214,9 @@ def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info
     molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
 
     metrics = BasicMolBasedMetrics(dataset_info)
-    [validity, uniqueness, novelty, stability], unique = metrics.evaluate(mols)
-    wandb.log({'Validity': validity, 'Uniqueness': uniqueness, 'Novelty': novelty, 'Stability (ours)': stability})
+    [validity, uniqueness, novelty, stability, atomic_stability], unique = metrics.evaluate(mols)
+    wandb.log({'Validity': validity, 'Uniqueness': uniqueness, 'Novelty': novelty, 'Stability (ours)': stability,
+               'Atomic Stability (ours)': atomic_stability})
 
     # validity_dict, rdkit_tuple = analyze_stability_for_molecules(molecules, dataset_info)
 

@@ -128,4 +128,4 @@ class BasicMolBasedMetrics(object):
         atomic_stability = get_atomic_stability(generated)
         print(f"Atomic stability: {atomic_stability * 100 :.2f}%")
 
-        return [validity, uniqueness, novelty, stability], unique
+        return [validity, uniqueness, novelty, stability, atomic_stability], unique

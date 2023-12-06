@@ -1,7 +1,9 @@
 import time
+import numpy as np
 import torch
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType
+import matplotlib.pyplot as plt
 
 type_map = {BondType.SINGLE: 1, BondType.DOUBLE: 2, BondType.TRIPLE: 3, BondType.AROMATIC: 4}
 inv_type_map = {1: BondType.SINGLE, 2: BondType.DOUBLE, 3: BondType.TRIPLE, 4: BondType.AROMATIC}
@@ -84,10 +86,6 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
 
     edge_mask = edge_mask.reshape(batch_size, n_nodes, n_nodes)
 
-    # incorrect_bond_predictions = (bond_rec.argmax(dim=-1) != bonds_tensor).float() * edge_mask
-
-    # print("edge mask: ", edge_mask[0])
-
     assert edge_mask[0][7][7] == 0
 
     predicted_bonds = bond_rec.argmax(dim=-1)
@@ -96,14 +94,21 @@ def bond_accuracy(bond_rec, bonds_tensor, edge_mask):
     no_bonds_mask = (actual_bonds == 0) * edge_mask
     single_bond_mask = (actual_bonds == 1) * edge_mask
     double_bond_mask = (actual_bonds == 2) * edge_mask
+    triple_bond_mask = (actual_bonds == 3) * edge_mask
+    aromatic_bond_mask = (actual_bonds == 4) * edge_mask
 
     incorrect_bond_predictions = (predicted_bonds != actual_bonds).float() * edge_mask
 
-    print("no bond error: ", (incorrect_bond_predictions * no_bonds_mask).sum() / no_bonds_mask.sum())
-    print("single bond error: ", (incorrect_bond_predictions * single_bond_mask).sum() / single_bond_mask.sum())
-    print("double bond error: ", (incorrect_bond_predictions * double_bond_mask).sum() / double_bond_mask.sum())
+    no_bond_error = (incorrect_bond_predictions * no_bonds_mask).sum() / no_bonds_mask.sum()
+    single_bond_error = (incorrect_bond_predictions * single_bond_mask).sum() / single_bond_mask.sum()
+    double_bond_error = (incorrect_bond_predictions * double_bond_mask).sum() / double_bond_mask.sum()
+    triple_bond_error = (incorrect_bond_predictions * triple_bond_mask).sum() / triple_bond_mask.sum()
+    aromatic_bond_error = (incorrect_bond_predictions * aromatic_bond_mask).sum() / aromatic_bond_mask.sum()
 
-    return incorrect_bond_predictions.sum() / edge_mask.sum()
+    bond_errors = [no_bond_error.item(), single_bond_error.item(), double_bond_error.item(), triple_bond_error.item(), aromatic_bond_error.item()]
+    print("bond errors: ", bond_errors)
+
+    return incorrect_bond_predictions.sum() / edge_mask.sum(), np.array(bond_errors)
 
 def check_atom(atom, log=False):
     if atom.GetSymbol() == "N" and atom.GetExplicitValence() != 3:
