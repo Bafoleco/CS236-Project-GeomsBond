@@ -22,7 +22,7 @@ def get_mols(charges, x, bonds, node_mask):
 
     return mols
 
-def get_mol(adj, charges, n_atoms):
+def get_mol(adj, pos, charges, n_atoms):
     adj = adj.argmax(dim=-1)[:n_atoms, :n_atoms]
     charges = charges[:n_atoms]
     if charges.min() < 1 or charges.max() > 9:
@@ -59,7 +59,7 @@ def get_mol(adj, charges, n_atoms):
     
     conf = mol.GetConformer()
     for i in range(n_atoms):
-        x, y, z = x[i][0], x[i][1], x[i][2]
+        x, y, z = pos[i][0], pos[i][1], pos[i][2]
         conf.SetAtomPosition(i, (x, y, z))
 
     mol.UpdatePropertyCache(strict=False)
