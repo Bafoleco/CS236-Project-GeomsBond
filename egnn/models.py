@@ -152,9 +152,11 @@ class EGNN_encoder_QM9(nn.Module):
 
         self.mode = mode
         if mode == 'egnn_dynamics':
+            # print('WARNING: Hardcoded encoder n_bond_orders=0')
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=hidden_nf, 
-                n_bond_orders=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                n_bond_orders=n_bond_orders, 
+                hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
@@ -217,7 +219,9 @@ class EGNN_encoder_QM9(nn.Module):
 
         if self.mode == 'egnn_dynamics':
             # we want to use our bonds as edge attrs
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, bonds=bonds_edge_attr)
+            # h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, bonds=bonds_edge_attr)
+            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, bonds=None)
+            print('WARNING: Hardcoded no encoder bonds')
             
             vel = x_final * node_mask  # This masking operation is redundant but just in case
         elif self.mode == 'gnn_dynamics':
