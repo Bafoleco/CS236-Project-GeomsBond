@@ -143,10 +143,11 @@ class EquivariantBlock(nn.Module):
             # TODO: modify edge_feat_nf. Right now it is just 2 (hardcoded in original code)
             # corresponding to orig distances + curr distancs. Add ... how many? 
             if i == 0:
-                if self.bonds_in:
-                    edge_model_in_d = base_edge_model_in_d + n_bond_orders
-                else:
-                    edge_model_in_d = base_edge_model_in_d
+                # if self.bonds_in:
+                #     edge_model_in_d = base_edge_model_in_d + n_bond_orders
+                # else:
+                edge_model_in_d = base_edge_model_in_d
+                print('WARNING: EBlock hardcoding no bond input for first GCL')
             else:
                 edge_model_in_d = edge_feat_nf # GCLs other than first also take hidden_nf-dim edge_feat
                 
