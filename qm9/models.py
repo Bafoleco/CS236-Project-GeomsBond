@@ -77,7 +77,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method,
-        include_charges=args.include_charges, using_bonds=args.include_bonds
+        include_charges=args.include_charges, using_bonds=args.encoder_bonds
         )
     
     decoder = EGNN_decoder_QM9(
@@ -87,7 +87,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method,
-        include_charges=args.include_charges, predict_bonds=args.include_bonds
+        include_charges=args.include_charges, predict_bonds=args.decoder_bonds
         )
 
     vae = EnHierarchicalVAE(
@@ -100,7 +100,7 @@ def get_autoencoder(args, device, dataset_info, dataloader_train, n_bond_orders=
         kl_weight=args.kl_weight,
         norm_values=args.normalize_factors,
         include_charges=args.include_charges,
-        include_bonds=args.include_bonds
+        include_bonds=args.decoder_bonds or args.encoder_bonds
         )
 
     return vae, nodes_dist, prop_dist
