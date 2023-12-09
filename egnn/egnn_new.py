@@ -188,8 +188,8 @@ class EquivariantBlock(nn.Module):
         # if self.n_layers == 1:
             # print('Why do we only have a single GCL in our EBlocks???')
 
-        if self.bonds_in:
-            assert bonds is not None
+        if self.bonds_in and bonds is not None:
+            # assert bonds is not None
             edge_attr = torch.cat([univ_edge_attr, bonds],dim=1)
         else:
             edge_attr = univ_edge_attr
