@@ -1,3 +1,5 @@
+This project, GeomsBond, is by Bay Foley-Cox and David Wendt, for Stanford CS236. The repo is originally a clone of GeoLDM (see below). We have modified it to pass bond information through the encoder and decoder. The readme below is from the original project, GeoLDM, and otherwise unmodified by us.
+
 # GeoLDM: Geometric Latent Diffusion Models for 3D Molecule Generation
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MinkaiXu/GeoLDM/blob/main/LICENSE)
