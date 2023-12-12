@@ -1,7 +1,9 @@
 import wandb
+from bond_helpers import get_mols
 from equivariant_diffusion.utils import assert_mean_zero_with_mask, remove_mean_with_mask,\
     assert_correctly_masked, sample_center_gravity_zero_gaussian_with_mask
 import numpy as np
+from mol_based_evals import BasicMolBasedMetrics
 import qm9.visualizer as vis
 from qm9.analyze import analyze_stability_for_molecules
 from qm9.sampling import sample_chain, sample, sample_sweep_conditional
@@ -13,7 +15,7 @@ import torch
 
 
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dtype, property_norms, optim,
-                nodes_dist, gradnorm_queue, dataset_info, prop_dist, experimental_loader):
+                nodes_dist, gradnorm_queue, dataset_info, prop_dist):
     model_dp.train()
     model.train()
     nll_epoch = []
@@ -26,11 +28,6 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
         one_hot = data['one_hot'].to(device, dtype)
         charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
         bonds = data['bonds'].to(device, int) if args.rdkit else None
-
-        # print(x.shape)
-        # print(node_mask.shape)
-        # print(edge_mask.shape)
-        # print(one_hot.shape)
 
         x = remove_mean_with_mask(x, node_mask)
 
@@ -121,7 +118,7 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
         n_samples = 0
 
         n_iterations = len(loader)
-
+        bond_errors = np.zeros(5)
         for i, data in enumerate(loader):
             x = data['positions'].to(device, dtype)
             batch_size = x.size(0)
@@ -151,8 +148,12 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
                 context = None
 
             # transform batch through flow
+            bond_eval = {}
             nll, _, _ = losses.compute_loss_and_nll(args, eval_model, nodes_dist, x, h,
-                                                    bonds, node_mask, edge_mask, context)
+                                                    bonds, node_mask, edge_mask, context, partition=partition, bond_eval=bond_eval)
+            
+            bond_errors += bond_eval["eval"] * batch_size
+            
             # standard nll from forward KL
 
             nll_epoch += nll.item() * batch_size
@@ -160,6 +161,14 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
             if i % args.n_report_steps == 0:
                 print(f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
                       f"NLL: {nll_epoch/n_samples:.2f}")
+
+        bond_errors /= n_samples
+        print(f"Bond errors: {bond_errors} for partition {partition} at epoch {epoch}")
+        wandb.log({"Unbonded error": bond_errors[0]}, commit=True)
+        wandb.log({"Single bond error": bond_errors[1]}, commit=True)
+        wandb.log({"Double bond error": bond_errors[2]}, commit=True)
+        wandb.log({"Triple bond error": bond_errors[3]}, commit=True)
+        wandb.log({"Aromatic bond error": bond_errors[4]}, commit=True)
 
     return nll_epoch/n_samples
 
@@ -181,7 +190,7 @@ def sample_different_sizes_and_save(model, nodes_dist, args, device, dataset_inf
     for counter in range(int(n_samples/batch_size)):
         nodesxsample = nodes_dist.sample(batch_size)
         # TODO: modify the sample function to output bonds along with x? or it seems this is only for diffusion?
-        one_hot, charges, x, node_mask = sample(args, device, model, prop_dist=prop_dist,
+        one_hot, charges, x, bonds, node_mask = sample(args, device, model, prop_dist=prop_dist,
                                                 nodesxsample=nodesxsample,
                                                 dataset_info=dataset_info)
         print(f"Generated molecule: Positions {x[:-1, :, :]}")
@@ -195,22 +204,31 @@ def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info
     batch_size = min(batch_size, n_samples)
     assert n_samples % batch_size == 0
     molecules = {'one_hot': [], 'x': [], 'node_mask': []}
+    mols = []
     for i in range(int(n_samples/batch_size)):
         nodesxsample = nodes_dist.sample(batch_size)
-        one_hot, charges, x, node_mask = sample(args, device, model_sample, dataset_info, prop_dist,
+        one_hot, charges, x, bonds, node_mask = sample(args, device, model_sample, dataset_info, prop_dist,
                                                 nodesxsample=nodesxsample)
 
         molecules['one_hot'].append(one_hot.detach().cpu())
         molecules['x'].append(x.detach().cpu())
         molecules['node_mask'].append(node_mask.detach().cpu())
 
-    molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
-    validity_dict, rdkit_tuple = analyze_stability_for_molecules(molecules, dataset_info)
+        mols += get_mols(charges, x, bonds, node_mask)
 
-    wandb.log(validity_dict)
-    if rdkit_tuple is not None:
-        wandb.log({'Validity': rdkit_tuple[0][0], 'Uniqueness': rdkit_tuple[0][1], 'Novelty': rdkit_tuple[0][2]})
-    return validity_dict
+    molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
+
+    metrics = BasicMolBasedMetrics(dataset_info)
+    [validity, uniqueness, novelty, stability, atomic_stability], unique = metrics.evaluate(mols)
+    wandb.log({'Validity': validity, 'Uniqueness': uniqueness, 'Novelty': novelty, 'Stability (ours)': stability,
+               'Atomic Stability (ours)': atomic_stability})
+
+    # validity_dict, rdkit_tuple = analyze_stability_for_molecules(molecules, dataset_info)
+
+    # wandb.log(validity_dict)
+    # if rdkit_tuple is not None:
+    #     wandb.log({'Validity': rdkit_tuple[0][0], 'Uniqueness': rdkit_tuple[0][1], 'Novelty': rdkit_tuple[0][2]})
+    # return validity_dict
 
 
 def save_and_sample_conditional(args, device, model, prop_dist, dataset_info, epoch=0, id_from=0):

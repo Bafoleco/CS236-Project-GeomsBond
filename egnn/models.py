@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from egnn.egnn_new import EGNN, GNN
+from egnn.egnn_paper import EGNN_PAPER
 from equivariant_diffusion.utils import remove_mean, remove_mean_with_mask
 import numpy as np
 
@@ -14,7 +15,7 @@ class EGNN_dynamics_QM9(nn.Module):
         super().__init__()
         self.mode = mode
         if mode == 'egnn_dynamics':
-            self.egnn = EGNN(
+            self.egnn = EGNN_PAPER(
                 in_node_nf=in_node_nf + context_node_nf, in_edge_nf=1,
                 hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
@@ -23,6 +24,7 @@ class EGNN_dynamics_QM9(nn.Module):
                 aggregation_method=aggregation_method)
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
+            print('WARNING: Using GNN dynamics! (for the EGNN dynamics QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, in_edge_nf=0,
                 hidden_nf=hidden_nf, out_node_nf=3 + in_node_nf, device=device,
@@ -136,11 +138,11 @@ class EGNN_dynamics_QM9(nn.Module):
 
 class EGNN_encoder_QM9(nn.Module):
     def __init__(self, in_node_nf, context_node_nf, out_node_nf,
-                 n_dims, hidden_nf=64, device='cpu',
+                 n_dims, n_bond_orders, hidden_nf=64, device='cpu',
                  act_fn=torch.nn.SiLU(), n_layers=4, attention=False,
                  tanh=False, mode='egnn_dynamics', norm_constant=0,
                  inv_sublayers=2, sin_embedding=False, normalization_factor=100, aggregation_method='sum',
-                 include_charges=True, encode_bonds=False):
+                 include_charges=True, using_bonds=False):
         '''
         :param in_node_nf: Number of invariant features for input nodes.'''
         super().__init__()
@@ -152,14 +154,16 @@ class EGNN_encoder_QM9(nn.Module):
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=hidden_nf, 
-                in_edge_nf=1, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                n_bond_orders=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method, using_bonds=encode_bonds)
+                aggregation_method=aggregation_method, 
+                bonds_in=using_bonds, bonds_out=False)
+                # TODO: Change bonds_out if we add bonds to the diffusion model
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
-            print('WARNNING: Using GNN dynamics! (for the EGNN encoder QM9)')
+            print('WARNING: Using GNN dynamics! (for the EGNN encoder QM9)')
             self.gnn = GNN(
                 in_node_nf=in_node_nf + context_node_nf + 3, out_node_nf=hidden_nf + 3, 
                 in_edge_nf=0, hidden_nf=hidden_nf, device=device,
@@ -213,7 +217,8 @@ class EGNN_encoder_QM9(nn.Module):
 
         if self.mode == 'egnn_dynamics':
             # we want to use our bonds as edge attrs
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, edge_attr=bonds_edge_attr)
+            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask, bonds=bonds_edge_attr)
+            
             vel = x_final * node_mask  # This masking operation is redundant but just in case
         elif self.mode == 'gnn_dynamics':
             xh = torch.cat([x, h], dim=1)
@@ -290,28 +295,31 @@ class EGNN_encoder_QM9(nn.Module):
 
 
 class QuadraticEstimator(nn.Module):
-    def __init__(self, latent_node_nf, n_bond_orders):
+    def __init__(self, input_dim, n_bond_orders):
         super().__init__()
-        self.latent_node_nf = latent_node_nf
+        self.input_dim = input_dim
         self.n_bond_orders = n_bond_orders
+
+        self.hidden_dim = 64
+
         self.A = torch.nn.Parameter(torch.randn(
-            (n_bond_orders, 1, latent_node_nf, latent_node_nf)
+            (n_bond_orders, 1, self.hidden_dim, self.hidden_dim)
         ))
 
         # mlp embedding of latents
         self.mlp = nn.Sequential(
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(input_dim, self.hidden_dim),
             nn.SiLU(),
-            nn.Linear(latent_node_nf, latent_node_nf),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.SiLU(),
         )
 
     def forward(self, z_xh):
-        bs,n_nodes,latent_node_nf = z_xh.shape
+        bs, n_nodes, latent_node_nf = z_xh.shape
 
         # shoot, I may have been wrong about how promising this was
         # it seems pretty weird to treat x and h the same way
-        assert latent_node_nf == self.latent_node_nf
+        assert latent_node_nf == self.input_dim
 
         # TODO There should be a better way to do this that saves 
         # half the parameters... something with torch.triu?
@@ -344,15 +352,22 @@ class EGNN_decoder_QM9(nn.Module):
         include_charges = int(include_charges)
         num_classes = out_node_nf - include_charges
 
+        self.final_mlp = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            act_fn,
+            nn.Linear(hidden_nf, out_node_nf))
+
         self.mode = mode
         if mode == 'egnn_dynamics':
             self.egnn = EGNN(
                 in_node_nf=in_node_nf + context_node_nf, out_node_nf=out_node_nf, 
-                in_edge_nf=1, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
+                n_bond_orders=n_bond_orders, hidden_nf=hidden_nf, device=device, act_fn=act_fn,
                 n_layers=n_layers, attention=attention, tanh=tanh, norm_constant=norm_constant,
                 inv_sublayers=inv_sublayers, sin_embedding=sin_embedding,
                 normalization_factor=normalization_factor,
-                aggregation_method=aggregation_method)
+                aggregation_method=aggregation_method, 
+                bonds_in=False, bonds_out=predict_bonds)
+                # TODO: Change bonds_in if we add bonds to the diffusion model
             self.in_node_nf = in_node_nf
         elif mode == 'gnn_dynamics':
             print('WARNNING: Using GNN dynamics! (for the EGNN decoder QM9)')
@@ -362,9 +377,12 @@ class EGNN_decoder_QM9(nn.Module):
                 act_fn=act_fn, n_layers=n_layers, attention=attention,
                 normalization_factor=normalization_factor, aggregation_method=aggregation_method)
 
-        if predict_bonds:
-            print("out_node_nf: ", out_node_nf)
-            self.bond_estimator = QuadraticEstimator(in_node_nf + n_dims, n_bond_orders)
+        # if predict_bonds:
+        #     print("out_node_nf: ", out_node_nf)
+        #     # self.bond_estimator = QuadraticEstimator(in_node_nf + n_dims, n_bond_orders)
+        #     # self.bond_estimator = nn.Sequential(
+        #     #     ...
+        #     # ) # Maybe make an mlp here?
 
         self.num_classes = num_classes
         self.include_charges = include_charges
@@ -391,7 +409,7 @@ class EGNN_decoder_QM9(nn.Module):
         # self.decoder._forward(z_xh, node_mask, edge_mask, context)
         # in EnHeirarchicalVAE, and we are not modifying latent space (for now) -- DW
         bs, n_nodes, dims = xh.shape
-        bonds = self.bond_estimator(xh) if self.predict_bonds else None
+        # bonds = self.bond_estimator(xh) if self.predict_bonds else None
 
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
@@ -411,17 +429,18 @@ class EGNN_decoder_QM9(nn.Module):
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
-            h_final, x_final = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
+            h_final, x_final, bonds = self.egnn(h, x, edges, node_mask=node_mask, edge_mask=edge_mask)
             vel = x_final * node_mask  # This masking operation is redundant but just in case
-        elif self.mode == 'gnn_dynamics':
-            xh = torch.cat([x, h], dim=1)
-            output = self.gnn(xh, edges, node_mask=node_mask)
-            vel = output[:, 0:3] * node_mask
-            h_final = output[:, 3:]
+        # elif self.mode == 'gnn_dynamics':
+        #     xh = torch.cat([x, h], dim=1)
+        #     output = self.gnn(xh, edges, node_mask=node_mask)
+        #     vel = output[:, 0:3] * node_mask
+        #     h_final = output[:, 3:]
         else:
             raise Exception("Wrong mode %s" % self.mode)
 
         vel = vel.view(bs, n_nodes, -1)
+        bonds = bonds.view(bs, n_nodes, n_nodes, -1)
 
         if torch.any(torch.isnan(vel)):
             print('Warning: detected nan, resetting EGNN output to zero.')
@@ -436,7 +455,9 @@ class EGNN_decoder_QM9(nn.Module):
             h_final = h_final * node_mask
         h_final = h_final.view(bs, n_nodes, -1)
 
-        return vel, h_final, bonds 
+        if self.predict_bonds:
+            return vel, h_final, bonds 
+        return vel, h_final
     
     def get_adj_matrix(self, n_nodes, batch_size, device):
         if n_nodes in self._edges_dict:

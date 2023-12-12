@@ -1,7 +1,8 @@
 imageio
 numpy
 scipy
-torch
+pytorch
 torchvision
 tqdm
 wandb
+rdkit

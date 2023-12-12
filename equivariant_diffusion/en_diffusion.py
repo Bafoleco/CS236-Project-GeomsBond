@@ -1,3 +1,6 @@
+import random
+
+import wandb
 from equivariant_diffusion import utils
 import numpy as np
 import math
@@ -5,7 +8,7 @@ import torch
 from egnn import models
 from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
-from bond_helpers import bond_accuracy, get_bond_edge_attr, get_one_hot_bonds, check_one_hot_bonds
+from bond_helpers import bond_accuracy, get_bond_edge_attr, get_molecular_stability, get_one_hot_bonds, check_one_hot_bonds
 
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
@@ -894,7 +897,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         number_of_nodes = torch.sum(node_mask.squeeze(2), dim=1)
         return (number_of_nodes - 1) * self.n_dims
 
-    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds, edge_mask=None):
+    def compute_reconstruction_error(self, xh_rec, bonds_rec, xh, bonds, edge_mask=None, log_eval=False, bond_eval=None):
         """Computes reconstruction error."""
 
         bs, n_nodes, dims = xh.shape
@@ -930,15 +933,16 @@ class EnHierarchicalVAE(torch.nn.Module):
             # and itself? (and don't double-count that way either but I think that's 
             # less of an issue.)
             # bs,n_edges,n_bond_orders = bonds_tensor.shape
-            # print(bonds_tensor.shape)
-            # print(bonds_rec.shape)
+            
             bonds_tensor = get_one_hot_bonds(bonds, n_nodes, self.n_bond_orders)
-            print("bond accu: ", bond_accuracy(bonds_rec, bonds_tensor, edge_mask))
 
+            overall_bond_error, bond_errors = bond_accuracy(bonds_rec, bonds_tensor, edge_mask)
+            print("Overall bond error: ", overall_bond_error)
+            print("Bond errors: ", bond_errors)
+            if bond_eval is not None:
+                bond_eval["eval"] = bond_errors
+            
             n_edges = n_nodes * n_nodes 
-
-            print("bonds rec: ", bonds_rec.shape)
-            # print("bonds tensor: ", bonds_tensor.shape)
 
             assert bonds_tensor.shape == bonds_rec.shape
             bonds_rec = bonds_rec.reshape(bs * n_edges, self.n_bond_orders)
@@ -960,7 +964,7 @@ class EnHierarchicalVAE(torch.nn.Module):
                 error_bonds = error_bonds / (n_edges * self.n_bond_orders)
         
         print("error bonds: ", error_bonds.mean())
-        return error + 10 * error_bonds
+        return error + 20 * error_bonds
     
     def sample_normal(self, mu, sigma, node_mask, fix_noise=False):
         """Samples from a Normal distribution."""
@@ -968,7 +972,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         eps = self.sample_combined_position_feature_noise(bs, mu.size(1), node_mask)
         return mu + sigma * eps
     
-    def compute_loss(self, x, h, bonds, node_mask, edge_mask, context):
+    def compute_loss(self, x, h, bonds, node_mask, edge_mask, context, partition="Train", bond_eval=None):
         """Computes an estimator for the variational lower bound."""
 
         # # print("compute loss")
@@ -1006,8 +1010,9 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         # Decoder output (reconstruction).
         x_recon, h_recon, bonds_rec = self.decoder._forward(z_xh, node_mask, edge_mask, context)
+        # print("x,h,bonds recon shape:",x_recon.shape, h_recon.shape, bonds_rec.shape)
         xh_rec = torch.cat([x_recon, h_recon], dim=2)
-        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask)
+        loss_recon = self.compute_reconstruction_error(xh_rec, bonds_rec, xh, bonds, edge_mask=edge_mask, log_eval=(partition=="Val"), bond_eval=bond_eval)
 
         # Combining the terms
         assert loss_recon.size() == loss_kl.size()
@@ -1017,12 +1022,12 @@ class EnHierarchicalVAE(torch.nn.Module):
 
         return loss, {'loss_t': loss.squeeze(), 'rec_error': loss_recon.squeeze()}
 
-    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition="Train", bond_eval=None):
         """
         Computes the ELBO if training. And if eval then always computes NLL.
         """
 
-        loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context)
+        loss, loss_dict = self.compute_loss(x, h, bonds, node_mask, edge_mask, context, partition=partition, bond_eval=bond_eval)
 
         neg_log_pxh = loss
 
@@ -1052,7 +1057,7 @@ class EnHierarchicalVAE(torch.nn.Module):
         if self.include_bonds:
             # bond_edge_attr, bond_tensor = self.process_bonds(bonds, xh.shape[1], n_bond_orders)
             bond_edge_attr = get_bond_edge_attr(bonds, xh.shape[1], self.n_bond_orders)
-            print()
+            # print()
         else:
             bond_edge_attr = None
 
@@ -1184,7 +1189,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
 
         return log_p_xh_given_z
     
-    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, bonds, node_mask=None, edge_mask=None, context=None, partition=None):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """
@@ -1250,9 +1255,9 @@ class EnLatentDiffusion(EnVariationalDiffusion):
 
         z_xh = torch.cat([z_x, z_h['categorical'], z_h['integer']], dim=2)
         diffusion_utils.assert_correctly_masked(z_xh, node_mask)
-        x, h = self.vae.decode(z_xh, node_mask, edge_mask, context)
+        x, h, bonds = self.vae.decode(z_xh, node_mask, edge_mask, context)
 
-        return x, h
+        return x, h, bonds
     
     @torch.no_grad()
     def sample_chain(self, n_samples, n_nodes, node_mask, edge_mask, context, keep_frames=None):
@@ -1274,7 +1279,7 @@ class EnLatentDiffusion(EnVariationalDiffusion):
             z_xh = chain[i]
             diffusion_utils.assert_mean_zero_with_mask(z_xh[:, :, :self.n_dims], node_mask)
 
-            x, h = self.vae.decode(z_xh, node_mask, edge_mask, context)
+            x, h, bonds = self.vae.decode(z_xh, node_mask, edge_mask, context)
             xh = torch.cat([x, h['categorical'], h['integer']], dim=2)
             chain_decoded[i] = xh
         
